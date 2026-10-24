@@ -177,7 +177,20 @@ function useGreeting() {
   return greeting;
 }
 
+/**
+ * The Ask page, starting fresh every time it is shown. Next keeps pages alive in the
+ * background when you navigate away, so without this, coming back from Items would show
+ * the last answer (and its reply could keep playing). Leaving bumps the key, so the
+ * session underneath is thrown away and rebuilt at its default.
+ */
 export function AskPanel() {
+  const [visit, setVisit] = useState(0);
+  // Cleanup runs when the page is hidden (navigated away from) or unmounted.
+  useEffect(() => () => setVisit((v) => v + 1), []);
+  return <AskSession key={visit} />;
+}
+
+function AskSession() {
   const greeting = useGreeting();
   const { mic, start, stop } = useRecorder();
   const status = useDeviceStatus();

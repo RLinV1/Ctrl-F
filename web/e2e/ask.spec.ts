@@ -234,3 +234,21 @@ test("the narrator greets with the last thing seen before any question", async (
   await expect(page.getByTestId("dialogue")).toContainText("was the last thing seen");
   await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
 });
+
+test("the Ask page starts fresh after a reload or a visit to another page", async ({ page }) => {
+  await page.goto("/");
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
+  await expect(page.getByTestId("answer")).toHaveCount(0);
+
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Items" }).click();
+  await expect(page).toHaveURL(/\/items$/);
+  await page.goBack();
+  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
+  await expect(page.getByTestId("answer")).toHaveCount(0);
+});
