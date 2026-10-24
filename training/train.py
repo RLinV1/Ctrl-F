@@ -25,6 +25,8 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--device", default=None, help="e.g. 0 for the first GPU, or cpu")
     parser.add_argument("--name", default="ctrlf", help="run name")
+    parser.add_argument("--cache", default=False, choices=["ram", "disk"], help="keep decoded images in memory (ram) or on disk after the first epoch; much faster when the folder syncs to OneDrive")
+    parser.add_argument("--patience", type=int, default=100, help="stop early after this many epochs without improvement")
     args = parser.parse_args()
 
     from ultralytics import YOLO  # imported late so --help works without it installed
@@ -37,6 +39,9 @@ def main() -> None:
         device=args.device,
         project=str(RUNS),
         name=args.name,
+        cache=args.cache,
+        patience=args.patience,
+        cos_lr=True,
     )
 
 

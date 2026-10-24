@@ -18,6 +18,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("weights", type=Path)
     parser.add_argument("--data", type=Path, default=DATA, help="dataset yaml (default: training/data.yaml)")
+    parser.add_argument("--frozen", nargs="?", const="", metavar="SUBFOLDER", help="score on training/datasets/frozen_test (the same photos for every model) instead of --data; "
+                        "give a subfolder name such as fourth_model for that held-out set")
     args = parser.parse_args()
     if not args.weights.exists():
         sys.exit(f"Weights not found: {args.weights}")
@@ -25,7 +27,16 @@ def main() -> None:
     from ultralytics import YOLO
 
     model = YOLO(str(args.weights))
-    box = model.val(data=resolved(args.data), split="test").box
+    data = resolved(args.data)
+    if args.frozen is not None:  # same photos for every model; names are the full class list, so older, smaller models still score
+        import yaml
+        from classes import CLASSES
+
+        config = {"path": str(Path(__file__).resolve().parent / "datasets" / "frozen_test" / args.frozen), "train": "images/test", "val": "images/test",
+                  "test": "images/test", "names": dict(enumerate(CLASSES))}
+        data = str(Path(__file__).resolve().parent / "frozen_test.run.yaml")
+        Path(data).write_text(yaml.safe_dump(config), encoding="utf-8")
+    box = model.val(data=data, split="test").box
     print(f"mAP50: {box.map50:.3f}")
     failing = 0
     for class_id, recall in zip(box.ap_class_index, box.r):

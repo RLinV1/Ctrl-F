@@ -1,6 +1,6 @@
 # YOLO dataset config. Class order must match the labels exported from the labeling tool.
-# Images and labels live outside git, under datasets/ctrlf/ (see docs/TRAINING.md).
-path: ../datasets/ctrlf
+# Images and labels live outside git, under training/datasets/ctrlf/ (see docs/TRAINING.md).
+path: datasets/ctrlf
 train: images/train
 val: images/val
 test: images/test

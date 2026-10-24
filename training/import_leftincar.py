@@ -1,4 +1,4 @@
-"""Add the LeftInCAR dataset (keys, wallet, phone, glasses) to datasets/personal.
+"""Add the LeftInCAR dataset (keys, wallet, phone, glasses) to training/datasets/personal.
 
     python training/import_leftincar.py C:/Users/me/ctrlf-downloads/leftincar/leftincar-data.zip
 
@@ -20,7 +20,7 @@ from classes import CLASSES, yaml_text
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "datasets" / "personal"
+OUT = ROOT / "training" / "datasets" / "personal"
 YAML = Path(__file__).resolve().parent / "personal.yaml"
 SOURCE = "https://doi.org/10.17632/dd4hw3r6dh.1"
 LICENSE = "https://creativecommons.org/licenses/by/4.0/"
@@ -86,7 +86,7 @@ def main() -> None:
                 writer.writerow([subset, image_id, LICENSE, AUTHOR, SOURCE])
                 kept[subset] += 1
 
-    YAML.write_text(yaml_text("Open Images V7 (CC BY) and LeftInCAR (CC BY 4.0); credits in datasets/personal/ATTRIBUTION.csv"), encoding="utf-8")
+    YAML.write_text(yaml_text("Open Images V7 (CC BY) and LeftInCAR (CC BY 4.0); credits in training/datasets/personal/ATTRIBUTION.csv"), encoding="utf-8")
     print(f"added {sum(kept.values())} images {kept}; wrote {YAML}")
 
 

@@ -36,6 +36,7 @@ See `.env.example`. Real `.env` files are git-ignored.
 GEMINI_API_KEY
 ELEVENLABS_API_KEY
 ELEVENLABS_VOICE_ID
+ROBOFLOW_API_KEY          # dev only: training/fetch_roboflow.py downloads datasets
 DATABASE_URL              # e.g. postgresql://ctrlf:ctrlf@localhost:5432/ctrlf
 S3_ENDPOINT               # e.g. http://localhost:8333
 S3_BUCKET

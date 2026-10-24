@@ -3,8 +3,8 @@
     python training/collect.py keys            # space = save a photo, q = quit
     python training/collect.py wallet --index 1
 
-Photos go to datasets/ctrlf/raw/<class>/. Label them in Roboflow, CVAT, or Label Studio,
-then export in YOLO format into datasets/ctrlf/ (images/ and labels/ with train/val/test).
+Photos go to training/datasets/ctrlf/raw/<class>/. Label them in Roboflow, CVAT, or Label Studio,
+then export in YOLO format into training/datasets/ctrlf/ (images/ and labels/ with train/val/test).
 For the best model, collect with the same camera that will be used at inference (the Pi).
 """
 import argparse
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-RAW = Path(__file__).resolve().parent.parent / "datasets" / "ctrlf" / "raw"
+RAW = Path(__file__).resolve().parent / "datasets" / "ctrlf" / "raw"
 
 
 def main() -> None:

@@ -8,9 +8,9 @@ wallet, wires or cables, AirPods, or AirPods case; get those from other sources 
 (see training/README.md).
 
 Open Images annotations are CC BY 4.0. Each image carries its own license in the metadata; this script
-keeps only images licensed CC BY (no NC/ND/SA) and writes datasets/personal/ATTRIBUTION.csv with the
+keeps only images licensed CC BY (no NC/ND/SA) and writes training/datasets/personal/ATTRIBUTION.csv with the
 author and source of every image used. Keep that file with the data: CC BY requires credit.
-Output: datasets/personal/{images,labels}/{train,val,test} and training/personal.yaml.
+Output: training/datasets/personal/{images,labels}/{train,val,test} and training/personal.yaml.
 """
 import argparse
 import csv
@@ -22,8 +22,8 @@ import requests
 from classes import CLASSES as ALL_CLASSES, yaml_text
 
 ROOT =Path(__file__).resolve().parent.parent
-CACHE = ROOT / "datasets" / "oi"
-OUT = ROOT / "datasets" / "personal"
+CACHE = ROOT / "training" / "datasets" / "oi"
+OUT = ROOT / "training" / "datasets" / "personal"
 YAML = Path(__file__).resolve().parent / "personal.yaml"
 
 CLASSES = {  # Open Images label id -> our class name (order = class index)
@@ -149,7 +149,7 @@ def main() -> None:
         writer.writerows(row for row, good in zip(attribution, ok) if good)
 
     YAML.write_text(
-        yaml_text("Open Images V7 (CC BY) and LeftInCAR (CC BY 4.0); credits in datasets/personal/ATTRIBUTION.csv"),
+        yaml_text("Open Images V7 (CC BY) and LeftInCAR (CC BY 4.0); credits in training/datasets/personal/ATTRIBUTION.csv"),
         encoding="utf-8",
     )
     print(f"wrote {YAML}")

@@ -1,7 +1,7 @@
 """Make a dataset yaml's `path:` absolute.
 
 Ultralytics resolves a relative `path:` against its own datasets directory, not against the yaml file,
-so the committed yamls (which use `../datasets/...`) would not be found. This writes a resolved copy.
+so the committed yamls (which use `datasets/...`) would not be found. This writes a resolved copy.
 """
 import tempfile
 from pathlib import Path
