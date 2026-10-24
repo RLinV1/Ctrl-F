@@ -83,7 +83,7 @@ The desktop sends the narrator text to ElevenLabs TTS, stores the MP3, and sets 
 `MediaRecorder` with `audio/webm;codecs=opus`, falling back to `audio/mp4` on Safari. ElevenLabs speech-to-text accepts both, so no transcoding. The upload key's extension follows the recorded type.
 
 **11. Session for the password gate.**
-`UI_PASSWORD` set → `middleware.ts` requires an HMAC-signed cookie (`ctrlf_session`, HttpOnly, SameSite=Lax, Secure in production, 30 days) whose key is derived from `UI_PASSWORD`, so changing the password signs everyone out. `/api/jobs/next` is excluded from the middleware and checks `Authorization: Bearer ${PI_JOB_TOKEN}` with a constant-time compare.
+`UI_PASSWORD` set → `proxy.ts` (Next 16's name for middleware) requires an HMAC-signed cookie (`ctrlf_session`, HttpOnly, SameSite=Lax, Secure in production, 30 days) whose key is derived from `UI_PASSWORD`, so changing the password signs everyone out. `/api/jobs/next` is excluded from the middleware and checks `Authorization: Bearer ${PI_JOB_TOKEN}` with a constant-time compare.
 
 **12. Boxes as percentage-positioned elements over the image.**
 Reuse the `feat/dev-test` overlay approach: the image sits in a `position: relative` frame and each box is an absolutely positioned element at `left/top/width/height` percentages from `{x, y, w, h}`. It scales with the image at every width, needs no canvas, and the box can carry an accessible label. The item name and confidence are also printed beside the photo (spec: voice-search).
@@ -106,13 +106,14 @@ No decorative gears, rivets, textures, gradients, or shadows elsewhere. Radius i
 | --- | --- | --- |
 | `ai-voice` | Ask: talk control and live waveform | Hold-to-talk instead of click-to-start; no playback/discard step, release submits (spec: voice-search) |
 | `ai-loading` | Ask: job stages | Stages driven by job status (sent, camera has it, answered); the brass gear sits beside it |
-| `receipt-printer` | Ask: the narrator's reply | Prints the reply as a telegram slip; reduced motion shows it whole |
+| `receipt-printer` | Ask: the outcome slip | Prints a telegram of the outcome (asked, found or not, place, confidence); the spoken reply lives in `synced-transcript`, so the text is not shown twice; reduced motion shows it whole |
 | `synced-transcript` | Ask: word highlight during reply audio | Driven by `reply_timings` and the `<audio>` element's time; plain text when no timings |
 | `split-flap-text` | Items and history: "last seen" time | Flips only when the value changes, never on first paint; reduced motion swaps text |
 | `contact-sheet` | Item history | Each frame is a sighting; its marker circle is replaced by our box overlay with the brass lens (Decision 12) |
-| `uptime-card` | Status area | Shows each device's current state and last activity only; no 90-day bars, since only the latest heartbeat is stored |
+| `uptime-card` | Status area | Only its header pattern (title, summary line, a row per device) is used, with our gauges; the day bars are its whole body and there is no history to draw, so the component file itself is not kept |
+| `flow-field` | Background of every screen | Brass streams drifting behind the paper frame (density 1, speed 0.55), showing faintly through a translucent sheet; panels stay opaque so text sits on solid paper; still frame under reduced motion |
 
-Not used: `gradient-button`, `loader`, `liquid-glass-card`, and the hero backgrounds (each breaks a TasteSkill rule), and anything without a job on these screens. Alternative considered: hand-built components on TasteSkill's `app.css`. Rejected by the team in favour of Kokonut's interaction work; the cost is the restyle pass per component.
+Not used: `gradient-button`, `loader`, `liquid-glass-card`, and the other hero backgrounds, and anything without a job on these screens. `flow-field` was added later at the team's request for a stronger steampunk feel; it is a deliberate exception to TasteSkill's no-decorative-background rule, recorded here and in `web/DESIGN.md`. Alternative considered: hand-built components on TasteSkill's `app.css`. Rejected by the team in favour of Kokonut's interaction work; the cost is the restyle pass per component.
 
 **16. Animation: `motion` stays inside Kokonut, anime.js v4 for everything we write.**
 Kokonut components keep their own `motion` usage as installed (rewriting them would lose their interaction work). Every animation we author — the gear, the gauge needles, the lens drawing around the matched box — uses `animejs` v4 only, created inside an anime.js scope per component and reverted on unmount so React re-renders do not leak animations. Under TasteSkill's app rules, motion is feedback and state only: nothing performs an entrance, and each animation has a reduced-motion path that shows the end state (spec: voice-search). Alternative: use `motion` for our effects too and ship one library. Rejected by the team; anime.js's SVG drawing and timeline APIs suit the gear, needles, and lens. Each screen's one question: Ask, "Where is it right now?"; Items, "What's missing, and where was it last?"; Item history, "Where has this been?"
@@ -131,6 +132,7 @@ Playwright runs `next build && next start` with `DATA_SOURCE=mock` and Chromium 
 - [Kokonut components ship shadows, gradients, rounded corners, or no reduced-motion handling] → A restyle and reduced-motion check per component before it is used, verified by `lint.mjs --app` and `inspect.mjs --app`; the source is ours to change.
 - [Two animation libraries in the bundle] → `motion` loads only with the Kokonut components that import it; anime.js is imported per component. Check the Ask screen's client bundle size after task group 8.
 - [Kokonut registry changes upstream] → Copied source is pinned in git; we re-add a component only on purpose.
+- [The animated background costs CPU on every screen] → It pauses offscreen and in background tabs, holds a still frame under reduced motion, and Playwright runs at most 3 browsers at once so tests stay reliable.
 - [Password gate is a single shared secret] → Matches the PRD's single-household scope; real accounts are a non-goal.
 
 ## Migration Plan

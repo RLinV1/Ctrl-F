@@ -4,12 +4,84 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Ctrl-F brand (steampunk), mapped onto shadcn's roles. Style: TasteSkill
+ * "editorial-greeting" (see web/DESIGN.md). Light only. Square corners.
+ *   paper   #f1e8d6  the frame: sidebar and window ground
+ *   sheet   #fbf7ef  the page the content sits on
+ *   panel   #f3ecdf  one step off the sheet: panels hold titles and rows
+ *   card    #fdfbf6  row cards, one step lighter than the panel
+ *   rule    #e2d6c0  1px edges, one step darker than the panel
+ *   ink     #1f1a14  all running text
+ *   muted   #5f5444  secondary notes (6.6:1 on sheet)
+ *   brass   #a8772a  the one primary action and the lens; never small text
+ *   brass-ink #7a5418 brass where it must be text (5.6:1 on sheet)
+ *   copper  #9c4a2a  failure only
+ */
+:root {
+  --paper: #f1e8d6;
+  --sheet: #fbf7ef;
+  --panel: #f3ecdf;
+  --card-row: #fdfbf6;
+  --rule: #e2d6c0;
+  --ink: #1f1a14;
+  --ink-muted: #5f5444;
+  --brass: #a8772a;
+  --brass-ink: #7a5418;
+  --copper: #9c4a2a;
+
+  --background: var(--sheet);
+  --foreground: var(--ink);
+  --card: var(--card-row);
+  --card-foreground: var(--ink);
+  --popover: var(--sheet);
+  --popover-foreground: var(--ink);
+  --primary: var(--brass);
+  --primary-foreground: var(--ink);
+  --secondary: var(--panel);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--panel);
+  --accent-foreground: var(--ink);
+  --destructive: var(--copper);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--brass);
+  --chart-1: var(--brass);
+  --chart-2: var(--ink-muted);
+  --chart-3: var(--rule);
+  --chart-4: var(--ink);
+  --chart-5: var(--copper);
+  --radius: 0rem;
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brass);
+  --sidebar-primary-foreground: var(--ink);
+  --sidebar-accent: #e8dcc6;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--brass);
+}
+
 @theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-panel: var(--panel);
+  --color-card-row: var(--card-row);
+  --color-rule: var(--rule);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-brass: var(--brass);
+  --color-brass-ink: var(--brass-ink);
+  --color-copper: var(--copper);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-text);
+  --font-serif: var(--font-text);
+  --font-heading: var(--font-display);
+  --font-mono: var(--font-text);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,92 +111,36 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
-
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
-    @apply font-sans;
+    @apply bg-paper font-sans text-ink;
+    font-optical-sizing: auto;
+  }
+  body {
+    @apply bg-paper text-ink;
+    font-variant-numeric: lining-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brass-ink);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Figures that line up digit for digit. */
+  .figures {
+    font-variant-numeric: tabular-nums lining-nums;
   }
 }
