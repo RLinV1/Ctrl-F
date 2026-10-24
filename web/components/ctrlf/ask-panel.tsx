@@ -101,13 +101,21 @@ function useRecorder() {
   const start = useCallback(async () => {
     const stream = await ensureStream();
     if (!stream) return false;
-    const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    chunksRef.current = [];
-    recorder.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
-    recorder.start(100);
-    recorderRef.current = recorder;
-    return true;
+    // Some browsers accept a MIME type in isTypeSupported but fail to start with it; retry with the default.
+    for (const mimeType of [pickMimeType(), ""]) {
+      try {
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        chunksRef.current = [];
+        recorder.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
+        recorder.start(100);
+        recorderRef.current = recorder;
+        return true;
+      } catch (error) {
+        console.error("[mic]", mimeType || "default type", error);
+      }
+    }
+    setMic("unavailable");
+    return false;
   }, [ensureStream]);
 
   const stop = useCallback(
