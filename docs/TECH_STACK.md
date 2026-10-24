@@ -61,7 +61,7 @@ We run the app with Docker Compose before anything else. `docker-compose.yml` at
 | Service | Status | Notes |
 | --- | --- | --- |
 | `postgres` | In the file now | Postgres 16, port 5432 |
-| `seaweedfs` | In the file now | S3 API on port 8333, no auth (local only). Unverified: confirm the image command when first started. Create the bucket on first use. |
+| `seaweedfs` | In the file now | S3 API on port 8333, no auth (local only). Verified starting under Docker Desktop (S3 port answers on 8333). Create the bucket on first use. |
 | `web` | Add when `web/` exists | Next.js, port 3000, published on the LAN so the Pi can poll it |
 | `desktop` | Add when `desktop/` exists | FastAPI + YOLO, port 9000. Needs GPU passthrough (NVIDIA Container Toolkit) to use the GPU; without it, runs on CPU. |
 

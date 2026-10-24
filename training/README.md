@@ -4,7 +4,7 @@ Plan and rationale: [docs/TRAINING.md](../docs/TRAINING.md). Datasets and weight
 
 ## Steps
 
-1. **Environment.** Python 3.11 or 3.12 venv, then `pip install ultralytics`. Check the GPU with `python -c "import torch; print(torch.cuda.is_available())"`.
+1. **Environment.** Python 3.11 or 3.12 venv, then `pip install ultralytics`. `pip install -r requirements.txt` gives CPU-only PyTorch on Windows. For an NVIDIA GPU, install the CUDA build of PyTorch from pytorch.org first. Check the GPU with `python -c "import torch; print(torch.cuda.is_available())"`.
 2. **Collect photos.** `python training/collect.py keys` (space saves, q quits). Repeat per class in `data.yaml`. Vary lighting, position, clutter. Aim for 150+ photos per class, shot with the camera used at inference.
 3. **Label.** Draw boxes in Roboflow, CVAT, or Label Studio. Export in YOLO format into `datasets/ctrlf/` as `images/{train,val,test}` and `labels/{train,val,test}`. Split by scene or session, not randomly per photo.
 4. **Train.** `python training/train.py`
