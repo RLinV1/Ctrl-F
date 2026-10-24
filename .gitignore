@@ -10,6 +10,9 @@ datasets/
 data/
 runs/
 
+# Local camera test output
+dev-test/out/
+
 # Python
 __pycache__/
 *.pyc
