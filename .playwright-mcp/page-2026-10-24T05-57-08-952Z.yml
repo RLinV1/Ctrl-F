@@ -1,0 +1,10 @@
+- generic [ref=e2]:
+  - heading "Ctrl-F dev test" [level=1] [ref=e3]
+  - paragraph [ref=e4]:
+    - button "Speak" [disabled] [ref=e5]
+    - button "Labeled dataset" [ref=e6]
+    - button "Model results" [ref=e7]
+  - generic [ref=e8]:
+    - heading "Speak to the mic" [level=2] [ref=e9]
+    - button "Start" [ref=e10]
+    - generic [ref=e11]: Click Start, say what you are looking for, then click Stop.

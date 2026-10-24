@@ -25,7 +25,21 @@ export default function Mic() {
   const [result, setResult] = useState<Found | null>(null);
   const [says, setSays] = useState("");
   const recorder = useRef<MediaRecorder | null>(null);
-  const camera = useRef<{ stream: MediaStream; video: HTMLVideoElement } | null>(null);
+  type Camera = { stream: MediaStream; video: HTMLVideoElement } | null;
+  const camera = useRef<Promise<Camera> | null>(null);
+
+  async function openCamera(): Promise<Camera> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.createElement("video");
+      video.muted = true;
+      video.srcObject = stream;
+      await video.play();
+      return { stream, video };
+    } catch {
+      return null; // no camera or permission denied: finish() reports it
+    }
+  }
 
   // Show the reply and read it aloud with ElevenLabs. If speech fails the text is still on the page.
   async function say(text: string) {
@@ -53,15 +67,9 @@ export default function Mic() {
   async function start() {
     try {
       const audio = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Open the camera now so it has warmed up (first webcam frames are dark) by the time we stop talking.
-      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
-      if (videoStream) {
-        const video = document.createElement("video");
-        video.muted = true;
-        video.srcObject = videoStream;
-        await video.play();
-        camera.current = { stream: videoStream, video };
-      }
+      // Open the camera in the background so recording starts at once and the webcam (slow to open, dark first
+      // frames) has warmed up by the time we stop talking.
+      camera.current = openCamera();
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : undefined;
       const rec = new MediaRecorder(audio, mimeType ? { mimeType } : undefined);
       const chunks: Blob[] = [];
@@ -83,7 +91,7 @@ export default function Mic() {
 
   // Grab one frame from the open camera, then release it.
   async function takePhoto(): Promise<Blob | null> {
-    const cam = camera.current;
+    const cam = await camera.current;
     camera.current = null;
     if (!cam) return null;
     const canvas = document.createElement("canvas");
