@@ -98,10 +98,8 @@ function useRecorder() {
     };
   }, [ensureStream]);
 
-  const start = useCallback(async () => {
-    const stream = await ensureStream();
-    if (!stream) return false;
-    // Some browsers accept a MIME type in isTypeSupported but fail to start with it; retry with the default.
+  /** Tries each recording format on a stream. Some browsers accept a MIME type in isTypeSupported but fail to start with it. */
+  const tryRecord = useCallback((stream: MediaStream) => {
     for (const mimeType of [pickMimeType(), ""]) {
       try {
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -114,9 +112,20 @@ function useRecorder() {
         console.error("[mic]", mimeType || "default type", error);
       }
     }
-    setMic("unavailable");
     return false;
-  }, [ensureStream]);
+  }, []);
+
+  const start = useCallback(async () => {
+    // A stream whose tracks ended (device switched, another app took the mic) cannot record; open a fresh one.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stream = await ensureStream();
+      if (!stream) return false;
+      if (stream.getAudioTracks().some((t) => t.readyState === "live") && tryRecord(stream)) return true;
+      streamRef.current = null;
+      stream.getTracks().forEach((t) => t.stop());
+    }
+    return false;
+  }, [ensureStream, tryRecord]);
 
   const stop = useCallback(
     () =>
@@ -216,7 +225,7 @@ export function AskPanel() {
     const started = await holdRef.current;
     holdRef.current = null;
     const blob = await stop();
-    if (!started) return setPhase({ kind: "idle" });
+    if (!started) return setPhase({ kind: "idle", hint: "The microphone could not start. Hold the button and try again." });
     if (seconds < MIN_HOLD_S) {
       return setPhase({ kind: "idle", hint: "Hold the button down while you speak, then let go." });
     }
