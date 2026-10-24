@@ -38,7 +38,7 @@ PORT = 8000
 
 DATASET = ROOT / "training" / "datasets" / "personal"
 SPLITS = ("train", "val", "test")
-WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items" / "weights" / "best.pt").resolve()
+WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items-4" / "weights" / "best.pt").resolve()
 CONFIDENCE = 0.25
 _model = None
 _model_key = None  # (path, mtime) of the loaded model
