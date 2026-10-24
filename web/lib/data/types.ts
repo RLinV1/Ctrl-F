@@ -27,6 +27,8 @@ export type JobView = {
   replyText: string | null;
   replyAudioUrl: string | null;
   replyTimings: WordTime[] | null;
+  /** The photo the camera took for this job, as the processing server marked it. */
+  photo: (Snapshot & { seenAt: string }) | null;
   match: Sighting | null;
   lastSighting: Sighting | null;
   error: string | null;

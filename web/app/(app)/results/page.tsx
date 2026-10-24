@@ -59,6 +59,8 @@ async function ResultList() {
                     src={job.match.snapshot.url}
                     width={job.match.snapshot.width}
                   />
+                ) : job.photo ? (
+                  <SnapshotFrame alt={`Camera photo for ${job.target ?? "the question"}`} height={job.photo.height} src={job.photo.url} width={job.photo.width} />
                 ) : (
                   <div className="flex aspect-video items-center justify-center bg-card-row text-ink-muted text-xs">
                     No photo

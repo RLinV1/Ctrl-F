@@ -353,6 +353,30 @@ function AnswerPhoto({ job, now }: { job: JobView; now: number }) {
       </figure>
     );
   }
+  if (job.photo) {
+    const s = job.lastSighting;
+    return (
+      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="not-found">
+        <SnapshotFrame
+          alt={`Camera photo taken at ${clockTime(job.photo.seenAt)}; the ${name} is not in it`}
+          height={job.photo.height}
+          priority
+          src={job.photo.url}
+          width={job.photo.width}
+        />
+        <figcaption className="text-[15px]">
+          <span className="block font-semibold">Not in view right now</span>
+          <span className="figures block text-ink-muted">Photo at {clockTime(job.photo.seenAt)}</span>
+          {s && <span className="block">Last seen {relativeTime(s.seenAt, now)}</span>}
+          {job.itemId && (
+            <Link className="mt-2 block underline underline-offset-4" href={`/items/${job.itemId}`}>
+              See where the {name} {name.endsWith("s") ? "have" : "has"} been
+            </Link>
+          )}
+        </figcaption>
+      </figure>
+    );
+  }
   if (job.lastSighting) {
     const s = job.lastSighting;
     const place = placeWords(s.zone);

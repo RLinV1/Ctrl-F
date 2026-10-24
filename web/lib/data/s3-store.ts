@@ -50,6 +50,7 @@ type JobRec = {
   found?: boolean;
   replyText?: string;
   replyTimings?: WordTime[] | null;
+  photo?: { key: string; seenAt: string; width: number; height: number } | null;
   match?: Stored | null;
   lastSighting?: Stored | null;
   error?: string | null;
@@ -259,6 +260,7 @@ export class S3Store implements Store {
       found: result.status === "found",
       replyText: text,
       replyTimings: timings,
+      photo: rec.targets.length ? { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height } : null,
       match,
       lastSighting: match ? null : (earlier ?? null),
     };
@@ -293,6 +295,7 @@ export class S3Store implements Store {
       replyText: rec.replyText ?? null,
       replyAudioUrl: this.replies.has(rec.id) ? `/api/jobs/${rec.id}/audio` : null,
       replyTimings: rec.replyTimings ?? null,
+      photo: rec.photo ? { id: rec.photo.key, url: await this.sign(rec.photo.key), width: rec.photo.width, height: rec.photo.height, seenAt: rec.photo.seenAt } : null,
       match: rec.match ? await this.sighting(rec.match) : null,
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,
       error: rec.error ?? null,
@@ -316,6 +319,7 @@ export class S3Store implements Store {
           unsupported: null,
           target: result.target,
           found: result.status === "found",
+          photo: { key: photoKey(id), seenAt: at, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
           match: result.status === "found" && first ? this.stored(id, at, result, first, result.target ?? first.name) : null,
         };
       });
