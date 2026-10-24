@@ -27,7 +27,22 @@ export default function Mic() {
   const recorder = useRef<MediaRecorder | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const voice = useRef<HTMLAudioElement | null>(null); // Sherlock's reply while it plays
+  const round = useRef(0); // bumped on every Start, so a reply still being fetched for the last round is dropped
   const [modalOpen, setModalOpen] = useState(false);
+  const others = result ? result.detections.filter((d) => !result.matches.includes(d)) : [];
+  const [models, setModels] = useState<{ name: string; mb: number }[]>([]);
+  const [selected, setSelected] = useState("");
+
+  // The weights files on the desktop, smallest first. Picking one switches the model the next photo is checked with.
+  useEffect(() => {
+    fetch("/api/models").then((r) => r.json()).then((m) => { setModels(m.models); setSelected(m.selected); }).catch(() => {});
+  }, []);
+
+  async function pickModel(name: string) {
+    setSelected(name);
+    await fetch("/api/model", { method: "POST", body: JSON.stringify({ name }) }).catch(() => {});
+  }
 
   useEffect(() => {
     const d = dialog.current;
@@ -56,10 +71,13 @@ export default function Mic() {
 
   // Show the reply and read it aloud with ElevenLabs. If speech fails the text is still on the page.
   async function say(text: string) {
+    const mine = round.current;
     setSays(text);
     try {
       const res = await fetch("/api/tts", { method: "POST", body: JSON.stringify({ text }) });
-      if (res.ok) await new Audio(URL.createObjectURL(await res.blob())).play();
+      if (!res.ok || mine !== round.current) return;
+      voice.current = new Audio(URL.createObjectURL(await res.blob()));
+      if (mine === round.current) await voice.current.play();
     } catch {
       /* no audio: the text above is enough */
     }
@@ -78,6 +96,8 @@ export default function Mic() {
   }
 
   async function start() {
+    round.current += 1;
+    voice.current?.pause(); // a new request cuts off the last reply
     try {
       const audio = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : undefined;
@@ -144,8 +164,6 @@ export default function Mic() {
     }
   }
 
-  const others = result ? result.detections.filter((d) => !result.matches.includes(d)) : [];
-
   return (
     <section>
       <h2>Speak to the mic</h2>
@@ -154,6 +172,12 @@ export default function Mic() {
           <video ref={video} autoPlay muted playsInline />
         </div>
         <div>
+          <label style={{ display: "block", marginBottom: "0.5rem" }}>
+            Model{" "}
+            <select value={selected} onChange={(e) => void pickModel(e.target.value)}>
+              {models.map((m) => <option key={m.name} value={m.name}>{m.name} ({m.mb} MB)</option>)}
+            </select>
+          </label>
           <button onClick={toggle} style={{ width: "100%", padding: "0.8rem" }}>{recording ? "Stop" : "Start"}</button>
           {clipUrl && (
             <p>
@@ -163,12 +187,6 @@ export default function Mic() {
           )}
           <StatusLine status={status} />
           {says && <p><b>{says}</b></p>}
-          {result && (
-            <p className="out">
-              Model {result.model}, {result.seconds}s. Green = what you asked for, gray = other things it knows. Detected:{" "}
-              {result.detections.map((d) => `${d.name} ${Math.round((d.conf ?? 0) * 100)}%`).join(", ") || "nothing"}.
-            </p>
-          )}
         </div>
       </div>
       {/* Results popup: the snapshot with a box where the item is. The camera behind it keeps running. */}
@@ -183,12 +201,6 @@ export default function Mic() {
         )}
         <StatusLine status={status} />
         {says && <p><b>{says}</b></p>}
-        {result && (
-          <p className="out">
-            Green = what you asked for, gray = other things it knows. Detected:{" "}
-            {result.detections.map((d) => `${d.name} ${Math.round((d.conf ?? 0) * 100)}%`).join(", ") || "nothing"}.
-          </p>
-        )}
         <button onClick={() => setModalOpen(false)}>Close</button>
       </dialog>
     </section>

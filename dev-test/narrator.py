@@ -10,6 +10,7 @@ import os
 import sys
 
 import requests
+from find import near, where
 from tts_test import load_env
 
 # "-latest" alias follows Google's current model; pin an exact name in GEMINI_MODEL for stable behavior.
@@ -22,7 +23,8 @@ You receive a JSON result from the machine's vision system. Reply to the user in
 
 Rules:
 - Report only what the JSON says. Never invent items, places, or objects that are not in it.
-- Say plainly whether the item was found. If found, give where it is in the frame using the "where" field.
+- If "items" lists several things, say about each one in the order given, one short clause each. Status "partial" means some were found and some were not.
+- Say plainly whether the item was found. If found, give where it is in the frame using the "where" field, and mention "next_to" if present.
 - If status is "not_visible", say it is not in view and suggest checking another spot.
 - If status is "unsupported", say you cannot yet seek that item.
 - If status is "no_target", ask what they are looking for.
@@ -31,19 +33,25 @@ Rules:
 - Wit and Victorian flourish are welcome, but the answer must be clear first. No emojis, no stage directions, no mention of JSON."""
 
 
-def where(box: list[float]) -> str:
-    """Normalized x1,y1,x2,y2 -> 'upper left', 'center', ..."""
-    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    vertical = "upper" if cy < 0.33 else "lower" if cy > 0.66 else ""
-    horizontal = "left" if cx < 0.33 else "right" if cx > 0.66 else ""
-    return " ".join(part for part in (vertical, horizontal) if part) or "center"
-
-
 def narrate(result: dict, api_key: str, model: str = MODEL) -> str:
     """result: the dict from /api/find (status, target, matches, ...)."""
     facts = {"status": result["status"], "item": result.get("target")}
-    if result.get("matches"):
+    if len(result.get("items", [])) > 1:  # several things asked for: one entry each, in the order spoken
+        facts["items"] = []
+        for it in result["items"]:
+            entry = {"item": it["item"], "status": it["status"]}
+            if it["matches"]:
+                entry["where"] = where(it["matches"][0]["box"])
+                rel = near(it["matches"][0], result.get("detections", []))
+                if rel:
+                    entry["next_to"] = f"{rel[1]} the {rel[0]}"
+                entry["confidence_percent"] = round(it["matches"][0]["conf"] * 100)
+            facts["items"].append(entry)
+    elif result.get("matches"):
         facts["where"] = where(result["matches"][0]["box"])
+        rel = near(result["matches"][0], result.get("detections", []))
+        if rel:
+            facts["next_to"] = f"{rel[1]} the {rel[0]}"
         facts["confidence_percent"] = round(result["matches"][0]["conf"] * 100)
     if result.get("problem"):
         facts["problem"] = result["problem"]

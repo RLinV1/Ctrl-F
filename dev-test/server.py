@@ -12,6 +12,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -19,55 +20,101 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 import yaml
-from find import describe, extract_target, match
+from photo import crop_box, rotate_box
+from find import describe_all, extract_targets, merge_detections
 from narrator import MODEL, narrate
-from PIL import Image
+from PIL import Image, ImageOps
 
 from stt_test import transcribe
 from tts_test import DEFAULT_VOICE, load_env, synthesize
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT / "training"))
+from classes import CLASSES  # noqa: E402  the labeler offers the same classes the model is trained on
 REPORT = HERE / "out" / "report.json"
 PORT = 8000
 
 
-DATASET = ROOT / "datasets" / "personal"
+DATASET = ROOT / "training" / "datasets" / "personal"
 SPLITS = ("train", "val", "test")
-REVIEW = DATASET / "review.json"  # {"train/abc.jpg": true|false}: the user's yes/no on each image
-WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items" / "weights" / "best.pt")
+WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items" / "weights" / "best.pt").resolve()
 CONFIDENCE = 0.25
 _model = None
-_model_mtime = 0.0
+_model_key = None  # (path, mtime) of the loaded model
 _model_lock = threading.Lock()
 
 
 def get_model():
     """Load the trained weights, reloading when training writes a better best.pt."""
-    global _model, _model_mtime
+    global _model, _model_key
     if not WEIGHTS.exists():
         raise FileNotFoundError(f"No trained model at {WEIGHTS} yet. Is training still starting up?")
-    if _model is None or WEIGHTS.stat().st_mtime != _model_mtime:
+    if _model is None or (WEIGHTS, WEIGHTS.stat().st_mtime) != _model_key:
         from ultralytics import YOLO  # imported late: slow, and not needed for the other endpoints
 
-        _model_mtime = WEIGHTS.stat().st_mtime
+        _model_key = (WEIGHTS, WEIGHTS.stat().st_mtime)
         _model = YOLO(str(WEIGHTS))
     return _model
+
+
+STOCK = ROOT / "weights" / "yolo26n.pt"  # stock COCO weights: chairs, tables, laptops, cell phones, ...
+_stock = None
+
+
+def get_stock():
+    """The stock COCO model, or None when its weights are not on disk (then only the trained model runs)."""
+    global _stock
+    if _stock is None and STOCK.exists():
+        from ultralytics import YOLO
+
+        _stock = YOLO(str(STOCK))
+    return _stock
+
+
+def detect(model, image: Image.Image) -> list[dict]:
+    result = model.predict(image, conf=CONFIDENCE, device="cpu", verbose=False)[0]
+    names = model.names
+    return [{"cls": int(c), "name": names[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
+            for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
+
+
+def warm_up() -> None:
+    """Load the selected model and run one blank frame through it, so the first real photo is fast. Runs in a thread."""
+    try:
+        with _model_lock:
+            blank = Image.new("RGB", (640, 480))
+            get_model().predict(blank, device="cpu", verbose=False)
+            if get_stock():
+                get_stock().predict(blank, device="cpu", verbose=False)
+        print(f"[model] {WEIGHTS.name} ready", flush=True)
+    except Exception as error:  # no weights yet, etc.: the first /api/find reports it
+        print(f"[model] warm-up skipped: {error}", flush=True)
+
+
+def model_listing() -> dict:
+    """Weights files on this machine, smallest first, and the one in use. Names are paths relative to the repo root."""
+    files = {f.resolve() for f in (*ROOT.glob("*.pt"), *(ROOT / "weights").glob("*.pt"), *ROOT.glob("runs/*/weights/best.pt"), WEIGHTS)}
+    models = [{"name": f.relative_to(ROOT).as_posix() if f.is_relative_to(ROOT) else str(f), "mb": round(f.stat().st_size / 1e6, 1)}
+              for f in files if f.exists()]
+    return {"models": sorted(models, key=lambda m: m["mb"]),
+            "selected": WEIGHTS.relative_to(ROOT).as_posix() if WEIGHTS.is_relative_to(ROOT) else str(WEIGHTS)}
 
 
 def find(jpeg: bytes, transcript: str) -> dict:
     """Run the model on the photo, then look for the item named in the transcript among its detections."""
     started = time.perf_counter()
     with _model_lock:
-        model = get_model()
-        result = model.predict(Image.open(BytesIO(jpeg)).convert("RGB"), conf=CONFIDENCE, device="cpu", verbose=False)[0]
-        known = list(model.names.values())
-    detections = [{"cls": int(c), "name": known[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
-                  for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
-    target, supported = extract_target(transcript, known)
-    matches = match(target, detections) if supported else []
-    status, message = describe(target, supported, matches, known)
-    return {"transcript": transcript, "target": target, "status": status, "message": message, "matches": matches,
+        model, stock = get_model(), get_stock()
+        image = Image.open(BytesIO(jpeg)).convert("RGB")
+        own, own_names = detect(model, image), list(model.names.values())
+        coco = detect(stock, image) if stock and stock.names != model.names else []  # skip when the stock model is the selected one
+        known = own_names  # what we can be asked for; the stock classes only add context and "phone"
+    detections = merge_detections(own, coco, own_names)
+    targets = extract_targets(transcript, known)  # everything asked for: "my keys and wallet" is two items
+    answer = describe_all(targets, detections, known)
+    return {"transcript": transcript, "target": targets[0][0] if targets else None, "targets": [t[0] for t in targets],
+            "status": answer["status"], "message": answer["message"], "matches": answer["matches"], "items": answer["items"],
             "known": known, "detections": detections, "model": WEIGHTS.name, "seconds": round(time.perf_counter() - started, 2)}
 
 
@@ -80,6 +127,89 @@ def narration_for(result: dict) -> str | None:
     except (SystemExit, requests.RequestException, KeyError, IndexError) as error:
         print(f"[narrator] {error}", flush=True)
         return None
+
+
+MINE = ROOT / "training" / "datasets" / "mine"  # our own photos: images/<id>.jpg and labels/<id>.txt (YOLO format)
+MAX_SIDE = 1280  # uploads are shrunk to this, like the other training images
+
+
+def own_listing() -> dict:
+    """Every uploaded photo with its boxes. A label file, even an empty one, means the photo is labeled."""
+    items = []
+    for image in sorted((MINE / "images").glob("*.jpg")):
+        label = MINE / "labels" / f"{image.stem}.txt"
+        boxes = []
+        for line in label.read_text().splitlines() if label.exists() else []:
+            if not line.strip():
+                continue  # blank line
+            c, cx, cy, w, h = line.split()
+            cx, cy, w, h = float(cx), float(cy), float(w), float(h)
+            boxes.append({"cls": int(c), "name": CLASSES[int(c)], "box": [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]})
+        items.append({"file": image.name, "labeled": label.exists(), "boxes": boxes})
+    return {"classes": CLASSES, "items": items}
+
+
+def own_image(name: str) -> Path | None:
+    path = MINE / "images" / Path(name).name  # .name blocks path traversal
+    return path if path.is_file() else None
+
+
+def edit_photo(name: str, op: str, boxes: list[dict], arg) -> list[dict]:
+    """Rotate (arg = 90 or -90 degrees clockwise) or crop (arg = [x1, y1, x2, y2] normalized) a photo in place.
+
+    boxes are the boxes on screen, [{"cls", "box"}]; they move with the photo and are returned. They are written to the
+    label file only when the photo was already labeled, so an edit never marks a photo as labeled.
+    """
+    path = own_image(name)
+    if path is None:
+        raise ValueError("unknown image")
+    image = Image.open(path).convert("RGB")
+    if op == "rotate":
+        if arg not in (90, -90):
+            raise ValueError("rotate by 90 or -90")
+        image = image.rotate(-arg, expand=True)  # PIL turns counter-clockwise for positive angles
+        moved = [{"cls": b["cls"], "box": rotate_box(b["box"], arg)} for b in boxes]
+    elif op == "crop":
+        x1, y1, x2, y2 = (min(max(float(v), 0.0), 1.0) for v in arg)
+        if x2 - x1 < 0.02 or y2 - y1 < 0.02:
+            raise ValueError("crop area is too small")
+        w, h = image.size
+        image = image.crop((round(x1 * w), round(y1 * h), round(x2 * w), round(y2 * h)))
+        moved = [{"cls": b["cls"], "box": box} for b in boxes if (box := crop_box(b["box"], [x1, y1, x2, y2]))]
+    else:
+        raise ValueError("unknown edit")
+    image.save(path, quality=90)
+    if (MINE / "labels" / f"{path.stem}.txt").exists():
+        save_labels(name, moved)
+    return moved
+
+
+def save_upload(data: bytes) -> str:
+    """Store an uploaded photo as a shrunk JPEG under a fresh id. Raises ValueError when it is not an image."""
+    try:
+        image = ImageOps.exif_transpose(Image.open(BytesIO(data))).convert("RGB")
+    except Exception as error:
+        raise ValueError(f"not an image: {error}") from error
+    image.thumbnail((MAX_SIDE, MAX_SIDE))
+    (MINE / "images").mkdir(parents=True, exist_ok=True)
+    name = f"mine_{uuid.uuid4().hex[:12]}.jpg"
+    image.save(MINE / "images" / name, quality=90)
+    return name
+
+
+def save_labels(name: str, boxes: list[dict]) -> None:
+    """boxes: [{"cls": int, "box": [x1, y1, x2, y2]}] normalized. An empty list marks a photo with none of our items."""
+    if own_image(name) is None:
+        raise ValueError("unknown image")
+    lines = []
+    for b in boxes:
+        x1, y1, x2, y2 = (min(max(float(v), 0.0), 1.0) for v in b["box"])
+        x1, x2, y1, y2 = min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2)
+        if not 0 <= int(b["cls"]) < len(CLASSES) or (x2 - x1) < 0.005 or (y2 - y1) < 0.005:
+            continue  # unknown class or a stray click
+        lines.append(f"{int(b['cls'])} {(x1 + x2) / 2:.6f} {(y1 + y2) / 2:.6f} {x2 - x1:.6f} {y2 - y1:.6f}")
+    (MINE / "labels").mkdir(parents=True, exist_ok=True)
+    (MINE / "labels" / f"{Path(name).stem}.txt").write_text("\n".join(lines))
 
 
 def dataset_listing() -> dict:
@@ -104,7 +234,62 @@ def dataset_listing() -> dict:
             items.append({"file": image.name, "boxes": boxes, "author": who.get("author", ""),
                           "source": who.get("source", ""), "license": who.get("license", "")})
         splits[split] = items
-    return {"classes": classes, "splits": splits, "review": json.loads(REVIEW.read_text()) if REVIEW.exists() else {}}
+    return {"classes": classes, "splits": splits}
+
+
+def source_of(row: dict) -> tuple[str, str]:
+    """(id, display name) of the dataset an ATTRIBUTION.csv row came from."""
+    image_id, source = row["image_id"], row["source"]
+    if image_id.startswith("rf_"):  # one Roboflow Universe project; its page is the source
+        parts = source.split("universe.roboflow.com/")[-1].split("/")
+        return source, f"Roboflow: {'/'.join(parts[:2])}" + (f" v{parts[-1]}" if len(parts) > 3 else "")
+    if image_id.startswith("lic_"):
+        return "leftincar", "LeftInCAR"
+    if image_id.startswith("own_"):
+        return "own", "Your own photos"
+    return "openimages", "Open Images V7"
+
+
+def dataset_sources() -> list[dict]:
+    """The datasets merged into the training set, with how many images each contributed."""
+    attribution = DATASET / "ATTRIBUTION.csv"
+    groups: dict[str, dict] = {}
+    if attribution.exists():
+        with open(attribution, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                key, name = source_of(row)
+                group = groups.setdefault(key, {"id": key, "name": name, "images": 0, "license": row["license"]})
+                group["images"] += 1
+    return sorted(groups.values(), key=lambda g: -g["images"])
+
+
+def delete_dataset(key: str) -> int:
+    """Remove every image, label and credit row of one dataset from the training set. Returns how many images went.
+
+    The downloaded export under training/datasets/ stays, so it can be imported again. Refuses while a
+    training run is going, because training reads these files every epoch.
+    """
+    import psutil
+
+    if any("train.py" in " ".join(p.info["cmdline"] or []) for p in psutil.process_iter(["cmdline"])):
+        raise RuntimeError("training is running; delete datasets after it finishes")
+    attribution = DATASET / "ATTRIBUTION.csv"
+    with open(attribution, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    doomed = {row["image_id"] for row in rows if source_of(row)[0] == key}
+    if not doomed:
+        raise ValueError("unknown dataset")
+    for image_id in doomed:
+        for pattern in (f"images/*/{image_id}.*", f"labels/*/{image_id}.txt"):
+            for path in DATASET.glob(pattern):
+                path.unlink()
+    for cache in DATASET.glob("labels/*.cache"):
+        cache.unlink()  # Ultralytics rebuilds it
+    with open(attribution, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["subset", "image_id", "license", "author", "source"])
+        writer.writeheader()
+        writer.writerows(row for row in rows if row["image_id"] not in doomed)
+    return len(doomed)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -128,6 +313,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "http://localhost:5173")
             self.end_headers()
             return
+        if url.path == "/api/models":
+            return self._json(200, model_listing())
+        if url.path == "/api/own/list":
+            return self._json(200, own_listing())
+        if url.path == "/api/own/image":
+            image = own_image(parse_qs(url.query).get("name", [""])[0])
+            return self._send(200, image.read_bytes(), "image/jpeg") if image else self._json(404, {"error": "image not found"})
+        if url.path == "/api/dataset/sources":
+            return self._json(200, {"sources": dataset_sources()})
         if url.path == "/api/dataset":
             if not DATASET.exists():
                 return self._json(404, {"error": "No dataset yet. Run training/prepare_openimages.py first."})
@@ -169,19 +363,37 @@ class Handler(BaseHTTPRequestHandler):
                 text = transcribe(audio, f"clip.{extension}", api_key)
                 print(f"[stt] heard: {text!r}", flush=True)
                 self._json(200, {"text": text, "seconds": round(time.perf_counter() - started, 1)})
-            elif url.path == "/api/review":  # body = {"key": "train/abc.jpg", "keep": true|false|null}
+            elif url.path == "/api/own/upload":  # body = one image file; the UI sends a bulk upload one file at a time
+                self._json(200, {"file": save_upload(self._body())})
+            elif url.path == "/api/own/save":  # body = {"file": "mine_x.jpg", "boxes": [{"cls": 5, "box": [x1, y1, x2, y2]}]}
                 body = json.loads(self._body())
-                review = json.loads(REVIEW.read_text()) if REVIEW.exists() else {}
-                if body["keep"] is None:
-                    review.pop(body["key"], None)
-                else:
-                    review[body["key"]] = bool(body["keep"])
-                REVIEW.write_text(json.dumps(review))
+                save_labels(body["file"], body["boxes"])
+                self._json(200, {"ok": True})
+            elif url.path == "/api/own/edit":  # body = {"file", "op": "rotate"|"crop", "arg", "boxes"}
+                body = json.loads(self._body())
+                self._json(200, {"boxes": edit_photo(body["file"], body["op"], body["boxes"], body["arg"])})
+            elif url.path == "/api/dataset/delete":  # body = {"id": one of the ids from GET /api/dataset/sources}
+                removed = delete_dataset(json.loads(self._body())["id"])
+                self._json(200, {"removed": removed, "sources": dataset_sources()})
+            elif url.path == "/api/own/delete":  # body = {"file": "mine_x.jpg"}
+                image = own_image(json.loads(self._body())["file"])
+                if image:
+                    image.unlink()
+                    (MINE / "labels" / f"{image.stem}.txt").unlink(missing_ok=True)
                 self._json(200, {"ok": True})
             elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
                 result = find(self._body(), parse_qs(url.query).get("text", [""])[0])
                 result["narration"] = narration_for(result)  # None -> the UI falls back to the plain "message"
                 self._json(200, result)
+            elif url.path == "/api/model":  # body = {"name": one of the names from GET /api/models}
+                global WEIGHTS
+                name = json.loads(self._body())["name"]
+                if name not in {m["name"] for m in model_listing()["models"]}:  # only known weights files, no free paths
+                    return self._json(400, {"error": "unknown model"})
+                with _model_lock:
+                    WEIGHTS = ROOT / name if not Path(name).is_absolute() else Path(name)
+                threading.Thread(target=warm_up, daemon=True).start()  # load it now, not on the next photo
+                self._json(200, model_listing())
             elif url.path == "/api/trouble":  # body = {"problem": "..."}; Sherlock explains instead of the UI showing an error
                 problem = json.loads(self._body())["problem"]
                 print(f"[trouble] {problem}", flush=True)
@@ -193,6 +405,8 @@ class Handler(BaseHTTPRequestHandler):
         except SystemExit as error:  # transcribe/synthesize exit with the upstream error message
             print(f"[error] {error}", flush=True)
             self._json(502, {"error": str(error)})
+        except RuntimeError as error:  # delete refused while training runs
+            self._json(409, {"error": str(error)})
         except (KeyError, ValueError) as error:
             self._json(400, {"error": f"bad request: {error}"})
 
@@ -201,6 +415,7 @@ def main() -> None:
     load_env()
     if not os.environ.get("ELEVENLABS_API_KEY"):
         sys.exit("ELEVENLABS_API_KEY is not set. Put it in .env (see .env.example).")
+    threading.Thread(target=warm_up, daemon=True).start()
     print(f"Dev UI on http://localhost:{PORT}  (Ctrl+C to stop)")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
