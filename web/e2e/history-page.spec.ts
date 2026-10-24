@@ -15,7 +15,7 @@ test("History lists what was seen recently and what goes missing most", async ({
 
 test("Ask no longer shows the count tiles or the lists", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Ask where something is" })).toBeVisible();
+  await expect(page.getByTestId("prompt")).toBeVisible();
   await expect(page.getByText("Items tracked")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Recently seen" })).toHaveCount(0);
 });

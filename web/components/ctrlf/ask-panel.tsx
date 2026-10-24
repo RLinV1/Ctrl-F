@@ -1,35 +1,24 @@
 "use client";
 
+import { Camera, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import AILoadingState, { type AgentStep } from "@/components/kokonutui/ai-loading";
-import AI_Voice from "@/components/kokonutui/ai-voice";
-import ReceiptPrinter, { type SlipLine } from "@/components/kokonutui/receipt-printer";
+import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
 import SyncedTranscript from "@/components/kokonutui/synced-transcript";
 import type { JobView } from "@/lib/data/types";
-import { clockTime, percent, placeWords } from "@/lib/format";
-import { useDeviceStatus } from "./device-status";
-import { CogTrain } from "./cog-train";
-import { Narrator } from "./narrator";
 import { CameraView } from "./camera-view";
-import { CameraButton, TypeQuestion } from "./ask-inputs";
-import { MorphicNavbar } from "@/components/kokonutui/morphic-navbar";
+import { CogTrain } from "./cog-train";
+import { useDeviceStatus } from "./device-status";
+import { HoldToTalk, SimulatePress, useCameraJobs, useElapsed } from "./ask-inputs";
 
-/** The three ways to ask, in the switch at the top of the Ask box. */
+/** The three ways to ask, picked from the menu inside the prompt. */
 export type AskMode = "speak" | "type" | "camera";
-const MODES = {
-  speak: { name: "Speak here" },
-  type: { name: "Type it" },
-  camera: { name: "Camera button" },
-};
-
-const IDLE_TEXT: Record<AskMode, string> = {
-  speak:
-    "Hold the button and say what you are looking for, like “where are my keys?”. The camera takes a photo and the answer is read back to you.",
-  type: "Type what you are looking for and press Ask. The camera takes a photo and the answer is read back to you.",
-  camera:
-    "Press the button on the camera and ask out loud; its own mic hears you. The answer shows here and is read back to you.",
-};
+const MODES: PromptMode[] = [
+  { id: "speak", name: "Speak here", description: "Hold the button and talk to this computer", icon: <Mic /> },
+  { id: "type", name: "Type it", description: "Write the question", icon: <Keyboard /> },
+  { id: "camera", name: "Camera button", description: "Press the camera's button and use its mic", icon: <Camera /> },
+];
 
 export const POLL_MS = 750;
 export const MIN_HOLD_S = 0.5;
@@ -173,33 +162,16 @@ function stepsFor(job: JobView | null): AgentStep[] {
   ];
 }
 
-function slipFor(job: JobView): { stamp: string; lines: SlipLine[] } {
-  const lines: SlipLine[] = [];
-  if (job.transcript) lines.push({ text: `Asked: “${job.transcript}”`, quiet: true });
-  const name = job.target ?? "that";
-  if (job.found && job.match) {
-    lines.push({ text: `Found: ${name}`, strong: true });
-    const place = placeWords(job.match.zone);
-    lines.push({ text: place ? `On ${place}` : "Place not marked" });
-    lines.push({ text: `${percent(job.match.confidence)} sure`, quiet: true });
-  } else if (job.lastSighting) {
-    lines.push({ text: `Not in view: ${name}`, strong: true });
-    const place = placeWords(job.lastSighting.zone);
-    lines.push({ text: `Last seen ${clockTime(job.lastSighting.seenAt)}${place ? `, ${place}` : ""}` });
-  } else {
-    lines.push({ text: `Never seen: ${name}`, strong: true });
-  }
-  return { stamp: clockTime(job.createdAt), lines };
-}
 
 export function AskPanel() {
-  const { mic, level, start, stop } = useRecorder();
+  const { mic, start, stop } = useRecorder();
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [mode, setMode] = useState<AskMode>("type");
   const [blocked, setBlocked] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const [mode, setMode] = useState<AskMode>("speak");
   const holdRef = useRef<Promise<boolean> | null>(null);
+  const recording = phase.kind === "recording";
+  const elapsed = useElapsed(recording);
 
   // Poll the job until it is answered, failed, or stale.
   const jobId = phase.kind === "waiting" ? phase.jobId : null;
@@ -281,139 +253,125 @@ export function AskPanel() {
   }, []);
 
   const offline = status?.filter((s) => !s.online) ?? [];
+  const cameraOffline = offline.some((d) => d.device === "pi");
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
-  const slip = answer ? slipFor(answer) : null;
+  // The camera view and the answer appear only once a question has been asked.
+  const asked = phase.kind !== "idle" && phase.kind !== "recording";
+  useCameraJobs(mode === "camera" && !working, onCameraJob);
+
+  const changeMode = (next: string) => {
+    setMode(next as AskMode);
+    if (phase.kind === "idle" && phase.hint) setPhase({ kind: "idle" });
+  };
+
+  let body = null;
+  let action = null;
+  if (mode === "speak") {
+    body = (
+      <p className={recording ? "text-ink" : "text-ink-muted"}>
+        {recording
+          ? `Listening… ${Math.floor(elapsed)}s. Let go to send.`
+          : working
+            ? "Working on your last question…"
+            : "Hold the button and ask, like “where are my keys?”"}
+      </p>
+    );
+    action = <HoldToTalk disabled={micBlocked || working} onHoldEnd={onHoldEnd} onHoldStart={onHoldStart} recording={recording} />;
+  } else if (mode === "camera") {
+    body = (
+      <p className="text-ink-muted" data-testid="camera-button">
+        {working
+          ? "Working on the camera's question…"
+          : cameraOffline
+            ? "The camera is offline, so its button cannot be heard."
+            : "Press the button on the camera and ask out loud. Listening for the camera button…"}
+      </p>
+    );
+    action = !working && !cameraOffline ? <SimulatePress /> : null;
+  }
 
   return (
-    <div className="grid flex-1 gap-4 md:grid-cols-12">
-      <div className="flex flex-col gap-4 self-start md:col-span-8">
-      <section aria-labelledby="ask-title" className="bg-panel p-5">
-        <h2 className="font-semibold text-[15px]" id="ask-title">
-          Ask where something is
-        </h2>
-        <MorphicNavbar
-          className="mt-3 justify-start px-0 py-0"
-          items={MODES}
-          label="How to ask"
-          onValueChange={(next) => {
-            setMode(next as AskMode);
-            if (phase.kind === "idle" && phase.hint) setPhase({ kind: "idle" });
-          }}
-          value={mode}
-        />
+    <div className="flex max-w-[760px] flex-col gap-4">
+      <AI_Prompt
+        action={action}
+        body={body}
+        busy={working}
+        mode={mode}
+        modes={MODES}
+        onModeChange={changeMode}
+        onSubmit={askText}
+        textMode="type"
+      />
 
-        <div className="mt-5 grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]" data-mode={mode}>
-          <div className="flex flex-col items-center">
-            {mode === "speak" && (
-              <AI_Voice
-                caption={working ? "Working on your last question" : "Hold to ask"}
-                disabled={micBlocked || working}
-                level={level}
-                onHoldEnd={onHoldEnd}
-                onHoldStart={onHoldStart}
-                recording={phase.kind === "recording"}
+      {offline.length > 0 && (
+        <p className="text-copper text-sm" data-testid="offline-warning">
+          {cameraOffline
+            ? "The camera is offline. Your question will wait until it is back."
+            : "The desktop is offline. Answers will be delayed until it is back."}
+        </p>
+      )}
+      {mode === "speak" && mic === "denied" && (
+        <p className="text-copper text-sm" role="alert">
+          The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then reload, or
+          switch to Type it. <Link className="underline underline-offset-4" href="/items">Items</Link> still work without it.
+        </p>
+      )}
+      {mode === "speak" && mic === "unavailable" && (
+        <p className="text-copper text-sm" role="alert">
+          No microphone is available in this browser. Switch to Type it, or browse{" "}
+          <Link className="underline underline-offset-4" href="/items">Items</Link>.
+        </p>
+      )}
+      {phase.kind === "idle" && phase.hint && (
+        <p className="text-sm" role="status">
+          {phase.hint}
+        </p>
+      )}
+
+      {asked && (
+        <section aria-label="Answer" aria-live="polite" className="bg-panel p-5" data-phase={phase.kind}>
+          {working && (
+            <div>
+              <CogTrain className="mb-3" />
+              <AILoadingState
+                className="justify-start"
+                collapseWhenDone={false}
+                steps={phase.kind === "waiting" ? stepsFor(phase.job) : [{ id: "sent", label: "Sending your question", status: "running" }]}
               />
-            )}
-            {mode === "type" && <TypeQuestion disabled={working} onAsk={askText} />}
-            {mode === "camera" && (
-              <CameraButton
-                cameraOnline={!offline.some((d) => d.device === "pi")}
-                listening={!working}
-                onJob={onCameraJob}
+            </div>
+          )}
+          {phase.kind === "offline" && (
+            <div role="alert">
+              <p className="font-semibold text-[17px]">The camera has not picked this up.</p>
+              <p className="mt-1 text-ink-muted">It may be offline or switched off. Check it, then ask again.</p>
+            </div>
+          )}
+          {phase.kind === "failed" && (
+            <div role="alert">
+              <p className="font-semibold text-[17px] text-copper">That request failed.</p>
+              <p className="mt-1 text-ink-muted">{phase.message} Ask again to try once more.</p>
+            </div>
+          )}
+          {answer && (
+            <div data-testid="answer">
+              {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
+              <SyncedTranscript
+                className="mt-2"
+                key={answer.id}
+                onAutoplayBlocked={() => setBlocked(true)}
+                src={answer.replyAudioUrl}
+                text={answer.replyText ?? ""}
+                timings={answer.replyTimings}
               />
-            )}
-            {offline.length > 0 && (
-              <p className="mt-3 text-center text-copper text-sm" data-testid="offline-warning">
-                {offline.some((d) => d.device === "pi")
-                  ? "The camera is offline. Your question will wait until it is back."
-                  : "The desktop is offline. Answers will be delayed until it is back."}
-              </p>
-            )}
-            {mode === "speak" && mic === "denied" && (
-              <p className="mt-3 text-center text-copper text-sm" role="alert">
-                The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then
-                reload. <Link className="underline underline-offset-4" href="/items">Items</Link> still work without it.
-              </p>
-            )}
-            {mode === "speak" && mic === "unavailable" && (
-              <p className="mt-3 text-center text-copper text-sm" role="alert">
-                No microphone is available in this browser. You can still browse{" "}
-                <Link className="underline underline-offset-4" href="/items">Items</Link>.
-              </p>
-            )}
-            {phase.kind === "idle" && phase.hint && (
-              <p className="mt-3 text-center text-sm" role="status">
-                {phase.hint}
-              </p>
-            )}
-          </div>
+              {blocked && <p className="mt-2 text-ink-muted text-sm">Press play to hear the answer.</p>}
+            </div>
+          )}
+        </section>
+      )}
 
-          <div aria-live="polite" className="min-w-0" data-phase={phase.kind}>
-            {(phase.kind === "idle" || phase.kind === "recording") && (
-              <p className="max-w-[46ch] text-[17px] text-ink-muted">{IDLE_TEXT[mode]}</p>
-            )}
-            {working && (
-              <div>
-                <CogTrain className="mb-3" />
-                <AILoadingState
-                  className="justify-start"
-                  collapseWhenDone={false}
-                  steps={phase.kind === "waiting" ? stepsFor(phase.job) : [{ id: "sent", label: "Sending your question", status: "running" }]}
-                />
-              </div>
-            )}
-            {phase.kind === "offline" && (
-              <div role="alert">
-                <p className="font-semibold text-[17px]">The camera has not picked this up.</p>
-                <p className="mt-1 text-ink-muted">It may be offline or switched off. Check it, then ask again.</p>
-              </div>
-            )}
-            {phase.kind === "failed" && (
-              <div role="alert">
-                <p className="font-semibold text-[17px] text-copper">That request failed.</p>
-                <p className="mt-1 text-ink-muted">{phase.message} Ask again to try once more.</p>
-              </div>
-            )}
-            {answer && (
-              <div data-testid="answer">
-                {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
-                <SyncedTranscript
-                  className="mt-2"
-                  key={answer.id}
-                  onAutoplayBlocked={() => setBlocked(true)}
-                  onPlayingChange={setSpeaking}
-                  src={answer.replyAudioUrl}
-                  text={answer.replyText ?? ""}
-                  timings={answer.replyTimings}
-                />
-                {blocked && <p className="mt-2 text-ink-muted text-sm">Press play to hear the answer.</p>}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <CameraView answer={answer} answeredAt={phase.kind === "answered" ? phase.at : 0} working={working} />
-      </div>
-
-      {/* The right column runs to the bottom of the page: the answer slip at its top once
-          there is one, and the narrator standing in the page's bottom-right corner, facing
-          the panel. In the page flow, so he never covers content. */}
-      <div className="flex flex-col gap-4 md:col-span-4">
-        {slip && answer && (
-          <aside aria-label="Answer slip">
-            <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
-          </aside>
-        )}
-        {/* Reserves his corner, so content never runs under him on wider screens. */}
-        <div aria-hidden className="mt-auto hidden h-[470px] md:block" />
-        <Narrator
-          className="ml-auto w-56 md:pointer-events-none md:fixed md:right-0 md:bottom-0 md:z-30 md:w-[400px] md:max-w-none"
-          speaking={speaking}
-        />
-      </div>
+      {asked && <CameraView answer={answer} answeredAt={phase.kind === "answered" ? phase.at : 0} working={working} />}
     </div>
   );
 }

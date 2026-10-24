@@ -1,80 +1,119 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Mic, Square } from "lucide-react";
+import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 
-export const MAX_QUESTION_CHARS = 300;
 export const DEVICE_POLL_MS = 1_500;
 
-/** Ask by typing. Sends the text as the question; the desktop skips speech-to-text. */
-export function TypeQuestion({ disabled, onAsk }: { disabled: boolean; onAsk: (text: string) => void }) {
-  const [text, setText] = useState("");
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const question = text.trim();
-    if (!question || disabled) return;
-    onAsk(question);
-    setText("");
+/**
+ * The prompt's mic button for "Speak here": hold to record (pointer, or Space while it has
+ * focus), let go to send. Exposes `data-live` once hydrated, so tests know it is ready.
+ */
+export function HoldToTalk({
+  recording,
+  disabled,
+  onHoldStart,
+  onHoldEnd,
+}: {
+  recording: boolean;
+  disabled: boolean;
+  onHoldStart: () => void;
+  onHoldEnd: (seconds: number) => void;
+}) {
+  const live = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+  const holding = useRef(false);
+  const startedAt = useRef(0);
+
+  const start = () => {
+    if (disabled || holding.current) return;
+    holding.current = true;
+    startedAt.current = Date.now();
+    onHoldStart();
   };
+  const end = () => {
+    if (!holding.current) return;
+    holding.current = false;
+    onHoldEnd((Date.now() - startedAt.current) / 1000);
+  };
+
   return (
-    <form className="flex w-full flex-col gap-2" onSubmit={submit}>
-      <label className="font-semibold text-sm" htmlFor="question">
-        What are you looking for?
-      </label>
-      <input
-        autoComplete="off"
-        className="h-11 w-full border border-rule bg-card-row px-3 text-[16px] outline-none focus-visible:border-brass-ink"
-        id="question"
-        maxLength={MAX_QUESTION_CHARS}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Where are my keys?"
-        value={text}
-      />
-      <button
-        className="h-11 bg-brass font-semibold text-ink transition-colors hover:bg-brass/85 disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={disabled || !text.trim()}
-        type="submit"
-      >
-        Ask
-      </button>
-    </form>
+    <button
+      aria-disabled={disabled || undefined}
+      aria-label={recording ? "Recording. Release to send." : "Hold to ask"}
+      aria-pressed={recording}
+      className={cn(
+        "flex h-9 shrink-0 touch-none select-none items-center gap-2 px-3 font-semibold text-sm outline-none transition-colors duration-150",
+        "focus-visible:ring-2 focus-visible:ring-brass",
+        recording ? "bg-brass text-ink" : "bg-ink text-paper hover:bg-ink/85",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-ink",
+      )}
+      data-live={live || undefined}
+      data-testid="talk"
+      onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e: KeyboardEvent<HTMLButtonElement>) => {
+        if (e.key !== " ") return;
+        e.preventDefault();
+        if (!e.repeat) start();
+      }}
+      onKeyUp={(e: KeyboardEvent<HTMLButtonElement>) => {
+        if (e.key !== " ") return;
+        e.preventDefault();
+        end();
+      }}
+      onLostPointerCapture={end}
+      onPointerCancel={end}
+      onPointerDown={(e: PointerEvent<HTMLButtonElement>) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start();
+      }}
+      onPointerUp={end}
+      type="button"
+    >
+      {recording ? <Square aria-hidden className="size-3.5" fill="currentColor" /> : <Mic aria-hidden className="size-4" />}
+      {recording ? "Release to send" : "Hold to talk"}
+    </button>
   );
 }
 
-/**
- * Ask with the camera's own button and mic. The Pi uploads the recording and queues
- * the job; this waits for a new camera job and hands it to the page. In mock mode a
- * press can be simulated.
- */
-export function CameraButton({
-  listening,
-  cameraOnline,
-  onJob,
-}: {
-  listening: boolean;
-  cameraOnline: boolean;
-  onJob: (id: string) => void;
-}) {
-  const sinceRef = useRef(new Date().toISOString());
-  const [canSimulate, setCanSimulate] = useState(false);
-  const [pressing, setPressing] = useState(false);
-
+/** Seconds since `since` while `running`, ticking four times a second. */
+export function useElapsed(running: boolean) {
+  const [seconds, setSeconds] = useState(0);
+  const startedAt = useRef(0);
   useEffect(() => {
-    fetch("/api/mock/device-press")
-      .then((r) => setCanSimulate(r.ok))
-      .catch(() => undefined);
-  }, []);
+    if (!running) return;
+    startedAt.current = Date.now();
+    const id = window.setInterval(() => setSeconds((Date.now() - startedAt.current) / 1000), 250);
+    return () => {
+      window.clearInterval(id);
+      setSeconds(0);
+    };
+  }, [running]);
+  return seconds;
+}
 
+/**
+ * While `listening`, watches for a new question asked at the camera (its button and mic)
+ * and hands the job to `onJob`.
+ */
+export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
+  const sinceRef = useRef("");
   useEffect(() => {
     if (!listening) return;
+    // Only questions asked at the camera from now on.
+    sinceRef.current ||= new Date().toISOString();
     let alive = true;
     let timer = 0;
     const poll = async () => {
       try {
-        const res = await fetch(
-          `/api/jobs/latest?source=device&since=${encodeURIComponent(sinceRef.current)}`,
-          { cache: "no-store" },
-        );
+        const res = await fetch(`/api/jobs/latest?source=device&since=${encodeURIComponent(sinceRef.current)}`, {
+          cache: "no-store",
+        });
         if (alive && res.status === 200) {
           const { id } = await res.json();
           sinceRef.current = new Date().toISOString();
@@ -92,39 +131,33 @@ export function CameraButton({
       window.clearTimeout(timer);
     };
   }, [listening, onJob]);
+}
 
-  const simulate = async () => {
-    setPressing(true);
-    try {
-      await fetch("/api/mock/device-press", { method: "POST" });
-    } finally {
-      setPressing(false);
-    }
-  };
-
+/** Mock mode only: a stand-in for pressing the camera's button. */
+export function SimulatePress() {
+  const [available, setAvailable] = useState(false);
+  const [pressing, setPressing] = useState(false);
+  useEffect(() => {
+    fetch("/api/mock/device-press")
+      .then((r) => setAvailable(r.ok))
+      .catch(() => undefined);
+  }, []);
+  if (!available) return null;
   return (
-    <div className="flex flex-col items-center gap-3 text-center" data-testid="camera-button">
-      {/* A brass push button on its plate: the button on the camera. */}
-      <svg aria-hidden className="size-20" viewBox="0 0 80 80">
-        <rect fill="var(--ink)" height="80" width="80" />
-        <circle cx="40" cy="40" fill="var(--brass-ink)" r="27" />
-        <circle className={cn(listening && "motion-safe:animate-pulse")} cx="40" cy="40" fill="var(--brass)" r="20" />
-        <circle cx="34" cy="34" fill="var(--paper)" opacity="0.35" r="6" />
-      </svg>
-      <p className="text-sm">
-        {listening ? "Listening for the camera button…" : "Working on the camera's question"}
-      </p>
-      {!cameraOnline && <p className="text-copper text-sm">The camera is offline, so its button cannot be heard.</p>}
-      {canSimulate && listening && (
-        <button
-          className="border border-rule bg-card-row px-3 py-1.5 text-sm transition-colors hover:bg-panel disabled:opacity-50"
-          disabled={pressing}
-          onClick={simulate}
-          type="button"
-        >
-          Simulate a button press (mock mode)
-        </button>
-      )}
-    </div>
+    <button
+      className="h-9 border border-rule bg-sheet px-3 text-sm transition-colors hover:bg-panel disabled:opacity-50"
+      disabled={pressing}
+      onClick={async () => {
+        setPressing(true);
+        try {
+          await fetch("/api/mock/device-press", { method: "POST" });
+        } finally {
+          setPressing(false);
+        }
+      }}
+      type="button"
+    >
+      Simulate a press
+    </button>
   );
 }

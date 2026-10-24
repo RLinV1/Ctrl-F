@@ -106,7 +106,8 @@ No decorative gears, rivets, textures, gradients, or shadows elsewhere. Radius i
 | --- | --- | --- |
 | `ai-voice` | Ask: talk control and live waveform | Hold-to-talk instead of click-to-start; no playback/discard step, release submits (spec: voice-search) |
 | `ai-loading` | Ask: job stages | Stages driven by job status (sent, camera has it, answered); the brass gear sits beside it |
-| `receipt-printer` | Ask: the outcome slip | Prints a telegram of the outcome (asked, found or not, place, confidence); the spoken reply lives in `synced-transcript`, so the text is not shown twice; reduced motion shows it whole |
+| `ai-prompt` | Ask: the chat-style prompt | Model menu becomes the three ways to ask; attachments, slash commands, promo and effort removed; Send replaced by hold-to-talk or a simulated press in the other modes |
+| `receipt-printer` | Not on the Ask page now (kept) | Prints a telegram of the outcome (asked, found or not, place, confidence); the spoken reply lives in `synced-transcript`, so the text is not shown twice; reduced motion shows it whole |
 | `synced-transcript` | Ask: word highlight during reply audio | Driven by `reply_timings` and the `<audio>` element's time; plain text when no timings |
 | `split-flap-text` | Items and history: "last seen" time | Flips only when the value changes, never on first paint; reduced motion swaps text |
 | `contact-sheet` | Item history | Each frame is a sighting; its marker circle is replaced by our box overlay with the brass lens (Decision 12) |
@@ -126,7 +127,7 @@ Every way to ask ends as a job, so the Pi's claim, the desktop's processing and 
 - *Speak here:* the existing browser recording, uploaded, then `POST /api/jobs { audioKey }`, source `web`.
 - *Type it:* `POST /api/jobs { text }`, source `web`; the job stores the text as its transcript and the desktop skips speech-to-text when a job has text and no audio (`jobs.text`, a new nullable column, with `audio_key` made nullable).
 - *Camera button:* the Pi records from its own mic while its button is held and posts the raw audio to `POST /api/device/jobs` (Pi token, excluded from the password gate like `/api/jobs/next`), source `device` (`jobs.source`, a new column). The page, in this mode, polls `GET /api/jobs/latest?source=device&since=…` every 1.5 s and adopts the newest job as its own.
-The switch is Kokonut's `morphic-navbar`, adapted with `value`/`onValueChange` so its segments are buttons (`aria-pressed`) instead of links. In mock mode `POST /api/mock/device-press` simulates a press for demos and tests. Alternative: a WebSocket from the Pi to the page. Rejected: the web app never talks to the Pi directly, and polling a tiny endpoint matches the rest of the hand-off.
+The ways to ask are picked from a menu inside Kokonut's `ai-prompt` (adapted: the model menu lists the three ways, no attachments, commands, promo or effort control; the typing mode keeps its auto-growing field, Enter to send and ↑ to recall; the other modes put their own control where Send sits). The answer and camera view render only after a question is sent. The Ask page no longer shows the answer slip or the narrator; those components are kept for later. In mock mode `POST /api/mock/device-press` simulates a press for demos and tests. Alternative: a WebSocket from the Pi to the page. Rejected: the web app never talks to the Pi directly, and polling a tiny endpoint matches the rest of the hand-off.
 
 ## Risks / Trade-offs
 

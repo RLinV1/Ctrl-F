@@ -23,7 +23,7 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 
 | Screen | Question | Biggest thing |
 | --- | --- | --- |
-| Ask (`/`) | Where is it right now? | The talk control, and below it the Camera view: the latest photo, then the answer's photo with the target circled |
+| Ask (`/`) | Where is it right now? | One chat-style prompt (type, speak, or the camera's button); after a question, the answer and the Camera view with the target circled |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
 | History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |
@@ -42,15 +42,12 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 
 ## The narrator
 
-A steampunk detective (deerstalker, brass goggles, pipe) is the face of the ElevenLabs voice that reads every
-answer. He stands, large (400px), fixed in the window's bottom-right corner on the Ask page, overlapping the sheet's edge and frame and ignoring clicks, facing the panel; a spacer in his column keeps content out of that corner,, in the page flow so he never covers content
-(`components/ctrlf/narrator.tsx`, image `public/narrator.png`). The right column runs to the bottom of the page; before a question it holds only him;
-after an answer the telegram slip prints above him. He nods while a reply's audio plays and his caption reads
-"Speaking…". On phones he sits under the Ask panel, on the right. Still under reduced motion.
+A steampunk detective (`components/ctrlf/narrator.tsx`, `public/narrator.png`) voices answers in the brand. He is
+off the Ask page for now, while it is rebuilt around the chat prompt; the component is kept for later.
 
 ## Kokonut components in use
 
-`ai-voice` (hold-to-talk), `ai-loading` (job stages), `receipt-printer` (telegram outcome slip),
+`ai-prompt` (the Ask page's prompt, with the three ways to ask), `ai-loading` (job stages),
 `synced-transcript` (spoken-word highlight, driven by real audio), `split-flap-text` (last seen),
 `contact-sheet` (history film strips with loupe), `flow-field` (background). `uptime-card`'s header pattern is used
 for the status area; the component itself was removed. Palette mapping: `scripts/restyle-kokonut.py`.

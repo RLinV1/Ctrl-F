@@ -7,17 +7,24 @@ The Ask screen: a person holds one control, says what they are looking for, and 
 ## ADDED Requirements
 
 ### Requirement: Three ways to ask
-The Ask box SHALL offer a switch between speaking into this computer's microphone (the default), typing the question, and pressing the camera's button to ask through the camera's mic. The chosen way SHALL be marked as selected, and the area below the switch SHALL show only that way's control.
+The Ask screen SHALL be a single chat-style prompt with a menu inside it for choosing how to ask: typing the question (the default), speaking into this computer's microphone, or pressing the camera's button to ask through the camera's mic. The menu SHALL show the chosen way, and the prompt SHALL show only that way's control. There is no model selector.
 
 #### Scenario: Switching
-- **WHEN** the user picks "Type it"
-- **THEN** "Type it" is marked selected, a text field and an Ask button replace the talk control, and the instructions describe typing
+- **WHEN** the user opens the menu and picks "Speak here"
+- **THEN** the menu reads "Speak here", the text field and Send are replaced by a hold-to-talk button, and the prompt says to hold the button and ask
+
+### Requirement: Results appear only after asking
+The answer and the camera view SHALL NOT be shown until a question has been sent; once one is, the progress, the answer and the camera's photo appear below the prompt.
+
+#### Scenario: Before and after
+- **WHEN** the page opens
+- **THEN** only the greeting and the prompt are shown, and after a question is sent the progress state and then the answer and the camera view appear
 
 ### Requirement: Ask by typing
-In typing mode the screen SHALL send the typed question when Ask is pressed or Enter is typed, keep Ask disabled while the field is empty or a question is being worked on, and show the answer exactly as for a spoken question.
+In typing mode the prompt SHALL send the typed question when Send is pressed or Enter is typed (Shift+Enter starts a new line), keep Send disabled while the field is empty or a question is being worked on, and show the answer exactly as for a spoken question.
 
 #### Scenario: Typed question answered
-- **WHEN** the user types "where are my glasses" and presses Ask
+- **WHEN** the user types "where are my glasses" and presses Enter
 - **THEN** the progress state shows, then the answer with "You asked: “where are my glasses”" and the photo with the glasses circled
 
 ### Requirement: Ask with the camera button

@@ -5,11 +5,11 @@ import { partOfDay, placeWords, relativeTime } from "@/lib/format";
 
 export default function AskPage() {
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-48px)] max-w-[1100px] flex-col px-4 pt-10 md:min-h-[calc(100dvh-18px)] md:px-8 md:pt-[72px]">
+    <div className="mx-auto max-w-[1100px] px-4 pt-10 pb-16 md:px-8 md:pt-[72px]">
       <Suspense fallback={<Greeting />}>
         <Overview />
       </Suspense>
-      <div className="mt-10 flex flex-1 flex-col">
+      <div className="mt-10">
         <AskPanel />
       </div>
     </div>

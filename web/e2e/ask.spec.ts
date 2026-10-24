@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { foundWallet, hold, hydrated, job, replies, sighting, stubJob, stubMediaClock, stubStatus } from "./fixtures";
+import { chooseMode, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, stubStatus, typeQuestion } from "./fixtures";
 
 test.describe("push-to-talk", () => {
   test("hold and release sends the question and shows an answer", async ({ page }) => {
@@ -9,12 +9,11 @@ test.describe("push-to-talk", () => {
     await expect(page.getByText("Request sent")).toBeVisible();
     await expect(page.getByTestId("answer")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/You asked: “/)).toBeVisible();
-    await expect(page.getByRole("document", { name: "Answer slip" })).toContainText("Asked:");
   });
 
   test("Space held on the control records and sends", async ({ page }) => {
     await page.goto("/");
-    await hydrated(page);
+    await chooseMode(page, "Speak here");
     await page.getByTestId("talk").focus();
     await page.keyboard.down(" ");
     await expect(page.getByTestId("talk")).toHaveAttribute("aria-pressed", "true");
@@ -42,6 +41,7 @@ test.describe("push-to-talk", () => {
           : query(d);
     });
     await page.goto("/");
+    await chooseMode(page, "Speak here");
     await expect(page.getByTestId("talk")).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("alert").filter({ hasText: "The microphone is blocked" })).toBeVisible();
     await page.getByRole("alert").getByRole("link", { name: "Items" }).click();
@@ -93,7 +93,9 @@ test.describe("while the job runs", () => {
     await stubStatus(page, false);
     await page.goto("/");
     await expect(page.getByTestId("offline-warning")).toContainText("The camera is offline");
-    await expect(page.getByTestId("talk")).not.toHaveAttribute("aria-disabled", "true");
+    // Asking still works; the question waits for the camera.
+    await page.getByLabel("What are you looking for?").fill("where is my wallet");
+    await expect(page.getByTestId("send")).toBeEnabled();
   });
 });
 
@@ -123,12 +125,7 @@ test.describe("the answer", () => {
       (window as unknown as { __t: number }).__t = t;
     }, at);
     await expect(page.locator("[data-current]")).toHaveText(expected);
-    // The narrator in the frame's corner speaks while the reply plays.
-    const narrator = page.getByRole("figure").filter({ has: page.getByAltText(/The narrator/) });
-    await expect(narrator).toHaveAttribute("data-speaking", "true");
-    await expect(narrator).toContainText("Speaking…");
-    await page.evaluate(() => document.querySelector("audio")!.dispatchEvent(new Event("pause")));
-    await expect(narrator).not.toHaveAttribute("data-speaking", "true");
+
   });
 
   test("autoplay blocked: the text shows and play starts it", async ({ page }) => {
@@ -190,9 +187,12 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   await expect(page.getByTestId("answer")).toBeVisible();
 });
 
-test("before asking, the camera view shows the latest photo", async ({ page }) => {
+test("the camera view stays hidden until a question is asked", async ({ page }) => {
   await page.goto("/");
-  const view = page.getByTestId("camera-view");
-  await expect(view.getByRole("img", { name: "Latest camera photo" })).toBeVisible();
-  await expect(view).toContainText("Ask, and the item you name is circled here.");
+  await expect(page.getByTestId("prompt")).toBeVisible();
+  await expect(page.getByTestId("camera-view")).toHaveCount(0);
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("camera-view")).toBeVisible();
+  await expect(page.getByTestId("found").getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
 });
