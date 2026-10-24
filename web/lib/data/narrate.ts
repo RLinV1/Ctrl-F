@@ -15,7 +15,7 @@ export type Result = {
   height?: number;
 };
 
-/** The classes the model is trained on: training/classes.py on main. Keep in sync with it. */
+/** Used until a result tells us what the running model can find: the classes in training/classes.py on main. */
 export const KNOWN_ITEMS = ["phone", "glasses", "remote", "watch", "headphones", "keys", "wallet", "airpods case", "airpods", "charger"];
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
@@ -122,12 +122,12 @@ export async function narrate(facts: Record<string, unknown>): Promise<string> {
 }
 
 /** Which known items did the user ask for? `unsupported` is an item they named that we cannot find. */
-export async function pickTargets(transcript: string): Promise<{ targets: string[]; unsupported: string | null }> {
+export async function pickTargets(transcript: string, known: string[]): Promise<{ targets: string[]; unsupported: string | null }> {
   const said = transcript.toLowerCase();
   if (!said.trim()) return { targets: [], unsupported: null };
   try {
     const prompt =
-      `Items we can find: ${JSON.stringify(KNOWN_ITEMS)}. The user said: ${JSON.stringify(transcript)}. ` +
+      `Items we can find: ${JSON.stringify(known)}. The user said: ${JSON.stringify(transcript)}. ` +
       "Reply with JSON only: {\"targets\": [items from the list the user asked for, exactly as spelled there], " +
       "\"unsupported\": \"an item they asked for that is not in the list, else null\"}.";
     const text = await gemini({
@@ -135,11 +135,11 @@ export async function pickTargets(transcript: string): Promise<{ targets: string
       generationConfig: { temperature: 0, maxOutputTokens: 200, responseMimeType: "application/json" },
     });
     const picked = JSON.parse(text);
-    const targets: string[] = (picked.targets ?? []).filter((t: string) => KNOWN_ITEMS.includes(t));
+    const targets: string[] = (picked.targets ?? []).filter((t: string) => known.includes(t));
     return { targets, unsupported: typeof picked.unsupported === "string" ? picked.unsupported : null };
   } catch (error) {
     console.error("[pickTargets]", error);
-    return { targets: KNOWN_ITEMS.filter((k) => said.includes(k)), unsupported: null };
+    return { targets: known.filter((k) => said.includes(k)), unsupported: null };
   }
 }
 

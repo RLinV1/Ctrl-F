@@ -24,6 +24,7 @@ export default function ResultsPage() {
 function outcome(job: JobView): string {
   if (job.status === "done") {
     if (!job.target) return "No item named";
+    if (job.found === null) return "Cannot seek";
     return job.found ? "Found" : "Not in view";
   }
   if (job.stale) return "No answer";

@@ -47,7 +47,7 @@ type JobRec = {
   targets: string[];
   unsupported: string | null;
   target?: string | null;
-  found?: boolean;
+  found?: boolean | null;
   replyText?: string;
   replyTimings?: WordTime[] | null;
   photo?: { key: string; seenAt: string; width: number; height: number } | null;
@@ -152,6 +152,16 @@ export class S3Store implements Store {
     };
   }
 
+  /** What the running model can find: the class list in the newest result that has one, else the trained classes. */
+  private async knownItems(): Promise<string[]> {
+    try {
+      const withList = (await this.recentResults()).find((r) => r.result.known?.length);
+      return withList?.result.known ?? KNOWN_ITEMS;
+    } catch {
+      return KNOWN_ITEMS;
+    }
+  }
+
   async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
     let transcript = "";
     try {
@@ -159,7 +169,7 @@ export class S3Store implements Store {
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
-    const { targets, unsupported } = await pickTargets(transcript);
+    const { targets, unsupported } = await pickTargets(transcript, await this.knownItems());
     const rec: JobRec = {
       id: randomUUID(),
       status: "pending",
@@ -255,12 +265,12 @@ export class S3Store implements Store {
       ...rec,
       status: "done",
       target: result.target,
-      found: result.status === "found",
+      found: result.status === "found" ? true : result.status === "not_visible" ? false : null, // null: no item was searched for
       replyText: text,
       replyTimings: timings,
       photo: { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
       match,
-      lastSighting: match ? null : (earlier ?? null),
+      lastSighting: result.status === "not_visible" ? (earlier ?? null) : null,
     };
     this.jobs.set(rec.id, done);
     return done;
