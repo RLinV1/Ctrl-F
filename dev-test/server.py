@@ -382,8 +382,9 @@ class Handler(BaseHTTPRequestHandler):
                     (MINE / "labels" / f"{image.stem}.txt").unlink(missing_ok=True)
                 self._json(200, {"ok": True})
             elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
-                result = find(self._body(), parse_qs(url.query).get("text", [""])[0])
-                result["narration"] = narration_for(result)  # None -> the UI falls back to the plain "message"
+                query = parse_qs(url.query)
+                result = find(self._body(), query.get("text", [""])[0])
+                result["narration"] = None if query.get("quick") else narration_for(result)  # None -> the UI shows the plain "message"; quick=1 skips Gemini
                 self._json(200, result)
             elif url.path == "/api/model":  # body = {"name": one of the names from GET /api/models}
                 global WEIGHTS
