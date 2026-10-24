@@ -168,6 +168,7 @@ export class S3Store implements Store {
       targets,
       unsupported,
     };
+    console.log(`[job] ${rec.id} said ${JSON.stringify(transcript)} -> targets ${JSON.stringify(targets)}${targets.length ? ", writing jobs/" : ", no job written (nothing to photograph)"}`);
     if (targets.length) {
       // The job goes to the bucket for the Pi to poll; no items named means no photo is needed, and getJob answers it.
       await this.client.send(
