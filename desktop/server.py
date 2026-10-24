@@ -10,7 +10,9 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from ultralytics import YOLO
 
-load_dotenv()  # finds .env in this folder or a parent; real env vars still win
+# Relative to the folder you run from; real env vars and earlier files win.
+load_dotenv(".ctrlf-server.env")
+load_dotenv()  # then .env in this folder or a parent
 BUCKET = os.environ["S3_BUCKET"]
 s3 = boto3.client(
     "s3",
