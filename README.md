@@ -31,6 +31,17 @@ cp .env.example .env
 docker compose up -d
 ```
 
+Python tools (`dev-test/`, `training/`) need Python 3.11 or 3.12:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python dev-test/server.py
+```
+
+Then open http://localhost:8000. It tests ElevenLabs speech-to-text and text-to-speech and saves webcam photos for training. `dev-test/` is throwaway; delete it when the real web UI exists. Add your ElevenLabs key to `.env` first (see `.env.example`).
+
 Stack details: [docs/TECH_STACK.md](docs/TECH_STACK.md). Go-live stack: [docs/TECH_STACK_LIVE.md](docs/TECH_STACK_LIVE.md).
 
 ## Spec-driven development

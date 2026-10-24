@@ -1,0 +1,17 @@
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 0.25rem 0.8rem 0.25rem 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.8rem; }
+figure { margin: 0; }
+figcaption { font-size: 0.85rem; color: #333; }
+body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+section { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+h2 { margin-top: 0; font-size: 1.1rem; }
+button, input, textarea { font: inherit; padding: 0.4rem 0.7rem; }
+textarea { width: 100%; box-sizing: border-box; }
+video { width: 100%; background: #000; border-radius: 4px; }
+.speak { display: grid; grid-template-columns: 1fr 280px; gap: 1rem; align-items: start; }
+.speak > :last-child { position: sticky; top: 1rem; } /* the Start/Stop button stays in view while the photo grows below the camera */
+@media (max-width: 700px) { .speak { grid-template-columns: 1fr; } .speak > :last-child { position: static; } }
+dialog { width: min(640px, 92vw); border: 1px solid #ccc; border-radius: 8px; }
+.out { margin-top: 0.6rem; color: #333; white-space: pre-wrap; }
+.err { color: #b00020; }

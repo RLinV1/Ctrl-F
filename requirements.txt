@@ -1,0 +1,8 @@
+# Python dependencies for dev-test/ and training/.
+# Use Python 3.11 or 3.12 (PyTorch wheels lag behind the newest Python releases).
+#   python -m venv .venv && .venv\Scripts\activate      (Windows)
+#   python3.12 -m venv .venv && source .venv/bin/activate  (macOS/Linux)
+#   pip install -r requirements.txt
+ultralytics>=8.3   # YOLO training and inference; pulls in PyTorch, NumPy, and OpenCV
+opencv-python>=4.10  # webcam capture in training/collect.py
+requests>=2.31     # ElevenLabs calls in dev-test/

@@ -1,0 +1,17 @@
+# Generated. Open Images V7 (CC BY), LeftInCAR and Roboflow Universe (CC BY 4.0); credits in training/datasets/personal/ATTRIBUTION.csv
+path: datasets/personal
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: phone
+  1: glasses
+  2: remote
+  3: watch
+  4: headphones
+  5: keys
+  6: wallet
+  7: airpods case
+  8: airpods
+  9: charger
