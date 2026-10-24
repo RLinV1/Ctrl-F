@@ -9,7 +9,7 @@ type Item = {
   source: string;
   license: string;
 };
-type Listing = { classes: string[]; splits: Record<string, Item[]> };
+type Listing = { classes: string[]; splits: Record<string, Item[]>; review: Record<string, boolean> };
 
 const PAGE = 60;
 
@@ -18,7 +18,8 @@ export default function Dataset() {
   const [data, setData] = useState<Listing | null>(null);
   const [error, setError] = useState("");
   const [split, setSplit] = useState("train");
-  const [cls, setCls] = useState("all");
+  const [cls, setCls] = useState("phone"); // phones only for now
+  const [show, setShow] = useState<"all" | "undecided" | "yes" | "no">("undecided");
   const [showBoxes, setShowBoxes] = useState(true);
   const [limit, setLimit] = useState(PAGE);
 
@@ -35,7 +36,20 @@ export default function Dataset() {
   if (!data) return <section>Loading dataset...</section>;
 
   const count = (items: Item[], name: string) => items.reduce((n, i) => n + i.boxes.filter((b) => b.name === name).length, 0);
-  const items = data.splits[split].filter((i) => cls === "all" || i.boxes.some((b) => b.name === cls));
+  const vote = (file: string) => data.review[`${split}/${file}`];
+  const items = data.splits[split]
+    .filter((i) => cls === "all" || i.boxes.some((b) => b.name === cls))
+    .filter((i) => show === "all" || (show === "undecided" ? vote(i.file) === undefined : vote(i.file) === (show === "yes")));
+
+  // keep = true (use it), false (drop it), null (undo). Saved on the server in datasets/personal/review.json.
+  function decide(file: string, keep: boolean | null) {
+    const key = `${split}/${file}`;
+    const review = { ...data!.review };
+    keep === null ? delete review[key] : (review[key] = keep);
+    setData({ ...data!, review });
+    fetch("/api/review", { method: "POST", body: JSON.stringify({ key, keep }) }).catch((err: Error) => setError(err.message));
+  }
+  const tally = Object.values(data.review);
 
   return (
     <>
@@ -61,8 +75,15 @@ export default function Dataset() {
             <option value="all">all classes</option>
             {data.classes.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>{" "}
+          <select value={show} onChange={(e) => { setShow(e.target.value as typeof show); setLimit(PAGE); }} aria-label="Review filter">
+            <option value="undecided">not reviewed</option>
+            <option value="yes">approved</option>
+            <option value="no">rejected</option>
+            <option value="all">all</option>
+          </select>{" "}
           <label><input type="checkbox" checked={showBoxes} onChange={(e) => setShowBoxes(e.target.checked)} /> Show labels</label>
         </p>
+        <p className="out">Reviewed so far: {tally.filter(Boolean).length} yes, {tally.filter((v) => !v).length} no.</p>
         <p className="out">{items.length} images in {split}{cls !== "all" && ` containing ${cls}`}.</p>
         <div className="grid">
           {items.slice(0, limit).map((item) => (
@@ -75,6 +96,10 @@ export default function Dataset() {
                 {[...new Set(item.boxes.map((b) => b.name))].join(", ")}
                 <br />
                 <a href={item.source} target="_blank" rel="noreferrer">{item.author || "unknown author"}</a>, CC BY
+                <br />
+                <button onClick={() => decide(item.file, true)} disabled={vote(item.file) === true}>Yes</button>{" "}
+                <button onClick={() => decide(item.file, false)} disabled={vote(item.file) === false}>No</button>{" "}
+                {vote(item.file) !== undefined && <button onClick={() => decide(item.file, null)}>Undo</button>}
               </figcaption>
             </figure>
           ))}

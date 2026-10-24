@@ -34,6 +34,7 @@ PORT = 8000
 
 DATASET = ROOT / "datasets" / "personal"
 SPLITS = ("train", "val", "test")
+REVIEW = DATASET / "review.json"  # {"train/abc.jpg": true|false}: the user's yes/no on each image
 WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items" / "weights" / "best.pt")
 CONFIDENCE = 0.25
 _model = None
@@ -92,7 +93,7 @@ def dataset_listing() -> dict:
             items.append({"file": image.name, "boxes": boxes, "author": who.get("author", ""),
                           "source": who.get("source", ""), "license": who.get("license", "")})
         splits[split] = items
-    return {"classes": classes, "splits": splits}
+    return {"classes": classes, "splits": splits, "review": json.loads(REVIEW.read_text()) if REVIEW.exists() else {}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -157,6 +158,15 @@ class Handler(BaseHTTPRequestHandler):
                 text = transcribe(audio, f"clip.{extension}", api_key)
                 print(f"[stt] heard: {text!r}", flush=True)
                 self._json(200, {"text": text, "seconds": round(time.perf_counter() - started, 1)})
+            elif url.path == "/api/review":  # body = {"key": "train/abc.jpg", "keep": true|false|null}
+                body = json.loads(self._body())
+                review = json.loads(REVIEW.read_text()) if REVIEW.exists() else {}
+                if body["keep"] is None:
+                    review.pop(body["key"], None)
+                else:
+                    review[body["key"]] = bool(body["keep"])
+                REVIEW.write_text(json.dumps(review))
+                self._json(200, {"ok": True})
             elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
                 result = find(self._body(), parse_qs(url.query).get("text", [""])[0])
                 result["narration"] = None  # the UI falls back to the plain "message" when Gemini is unavailable
