@@ -4,7 +4,7 @@ export const SIGHTINGS_DEFAULT_LIMIT = 20;
 export const SIGHTINGS_MAX_LIMIT = 100;
 export const HISTORY_PAGE_SIZE = 12;
 
-/** What the route handlers and pages need from storage: the S3 store, or the mock store when DATA_SOURCE=mock. */
+/** What the route handlers and pages need from storage: the S3 store. */
 export interface Store {
   /** Transcribes the recording and picks the items asked for. Never throws on a bad transcript: it becomes a no-target job. */
   createJob(audio: Uint8Array, contentType: string, source?: JobSource): Promise<JobView>;

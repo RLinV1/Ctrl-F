@@ -132,32 +132,3 @@ export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
     };
   }, [listening, onJob]);
 }
-
-/** Mock mode only: a stand-in for pressing the camera's button. */
-export function SimulatePress() {
-  const [available, setAvailable] = useState(false);
-  const [pressing, setPressing] = useState(false);
-  useEffect(() => {
-    fetch("/api/mock/device-press")
-      .then((r) => setAvailable(r.ok))
-      .catch(() => undefined);
-  }, []);
-  if (!available) return null;
-  return (
-    <button
-      className="h-9 border border-rule bg-sheet px-3 text-sm transition-colors hover:bg-panel disabled:opacity-50"
-      disabled={pressing}
-      onClick={async () => {
-        setPressing(true);
-        try {
-          await fetch("/api/mock/device-press", { method: "POST" });
-        } finally {
-          setPressing(false);
-        }
-      }}
-      type="button"
-    >
-      Simulate a press
-    </button>
-  );
-}

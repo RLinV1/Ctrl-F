@@ -7,7 +7,7 @@ import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
 import type { JobView } from "@/lib/data/types";
 import { GREETINGS, GREETING_KEY, nextGreetingIndex } from "@/lib/greetings";
 import { useDeviceStatus } from "./device-status";
-import { HoldToTalk, SimulatePress, useCameraJobs, useElapsed } from "./ask-inputs";
+import { HoldToTalk, useCameraJobs, useElapsed } from "./ask-inputs";
 import { Stage } from "./stage";
 
 /** The three ways to ask, picked from the menu inside the prompt. */
@@ -336,7 +336,7 @@ function AskSession() {
             : "Press the button on the camera and ask out loud. Listening for the camera button…"}
       </p>
     );
-    action = !working && !cameraOffline ? <SimulatePress /> : null;
+    action = null;
   }
 
   const line =
