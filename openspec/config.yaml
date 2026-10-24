@@ -1,0 +1,21 @@
+schema: spec-driven
+
+context: |
+  Project: Ctrl-F. Finds lost physical items. Voice request -> Raspberry Pi photo ->
+  YOLO on a desktop -> stored sighting (snapshot + Postgres row) -> spoken answer.
+  Read docs/PRD.md, docs/ARCHITECTURE.md, docs/TECH_STACK.md before proposing changes.
+  Components: web/ (Next.js on Vercel), desktop/ (Python FastAPI, YOLO), pi/ (Python, camera + mic).
+  Stack: Next.js + TypeScript, Vercel, GoDaddy domain, Gemini, ElevenLabs, Ultralytics YOLO (YOLO-World),
+  Postgres, S3-compatible storage (R2 default; SeaweedFS possible).
+  Constraints: Vercel never calls the desktop or Pi (desktop pushes to the web API over HTTPS).
+  Snapshots are private (signed URLs). No secrets in the repo.
+  Conventions: Conventional Commits, branches named type/short-slug, no Co-Authored-By trailers.
+
+rules:
+  proposal:
+    - Reference the PRD requirement IDs (F1..F10) the change implements.
+    - Include a Non-goals section.
+  tasks:
+    - Keep tasks small enough for one PR.
+    - Include a test or manual check task for non-trivial logic.
+    - Include a task to update docs/ when contracts or schema change.
