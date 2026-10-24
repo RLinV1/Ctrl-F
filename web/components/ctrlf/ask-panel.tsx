@@ -327,7 +327,7 @@ export function AskPanel() {
           working={working}
         />
       </div>
-      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] bg-sheet/90 pb-4">
+      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] pb-4">
       <AI_Prompt
         action={action}
         body={body}
