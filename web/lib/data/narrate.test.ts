@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factsFor, namedItems, near, wordTimes, where, type Detection } from "./narrate";
+import { factsFor, findings, namedItems, near, wordTimes, where, type Detection } from "./narrate";
 
 const det = (name: string, box: [number, number, number, number], conf = 0.9): Detection => ({ name, conf, box });
 
@@ -38,6 +38,14 @@ describe("narration helpers", () => {
     expect(namedItems("find my cell phone", known)).toEqual(["cell phone"]);
     expect(namedItems("where is my airpods case", known)).toEqual(["airpods case"]);
     expect(namedItems("hello there", known)).toEqual([]);
+  });
+
+  it("works out found and not visible from detections alone", () => {
+    const base = { status: "no_target" as const, target: null, matches: [], detections: [det("person", [0.1, 0.1, 0.5, 0.9], 0.7), det("person", [0.6, 0.1, 0.9, 0.9], 0.8)] };
+    expect(findings(["person"], base)).toMatchObject({ status: "found", target: "person" });
+    expect(findings(["person"], base).matches[0].conf).toBe(0.8); // best match first
+    expect(findings(["keys", "person"], base)).toMatchObject({ status: "found", target: "person" });
+    expect(findings(["keys"], base)).toMatchObject({ status: "not_visible", target: "keys", matches: [] });
   });
 
   it("turns character times into word times", () => {

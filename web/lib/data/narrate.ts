@@ -71,6 +71,16 @@ function entry(item: string, status: string, matches: Detection[], detections: D
   return out;
 }
 
+/** What the camera's detections say about the items asked for, when the processing server was not told which to look for. */
+export function findings(targets: string[], base: Result): Result {
+  const items: ItemResult[] = targets.map((item) => {
+    const matches = base.detections.filter((d) => d.name === item).sort((a, b) => b.conf - a.conf);
+    return { item, status: matches.length ? "found" : "not_visible", matches };
+  });
+  const first = items.find((i) => i.matches.length) ?? items[0];
+  return { ...base, status: first.matches.length ? "found" : "not_visible", target: first.item, matches: first.matches, items };
+}
+
 /** What Gemini is allowed to know. `lastSeen` is when a missing item was last in view, in words. */
 export function factsFor(result: Result, lastSeen?: string | null) {
   const facts: Record<string, unknown> = { status: result.status, item: result.target };
@@ -85,19 +95,37 @@ export function factsFor(result: Result, lastSeen?: string | null) {
   return facts;
 }
 
-async function gemini(body: object): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not set");
+/** One call to Gemini. A request that has not answered after HEDGE_MS is not abandoned but joined by a second; the first answer wins. */
+const HEDGE_MS = 1000;
+const GEMINI_TIMEOUT_MS = 3000; // a slow Gemini must not hold the answer; wording falls back to plain
+
+async function geminiOnce(body: object, key: string, signal: AbortSignal): Promise<string> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": key, "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal,
   });
   if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
   const data = await res.json();
   const parts: { text?: string }[] = data.candidates?.[0]?.content?.parts ?? [];
   return parts.map((p) => p.text ?? "").join("").trim();
+}
+
+async function gemini(body: object): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY is not set");
+  const stop = new AbortController();
+  const signal = AbortSignal.any([stop.signal, AbortSignal.timeout(GEMINI_TIMEOUT_MS)]);
+  const first = geminiOnce(body, key, signal);
+  const second = new Promise<string>((resolve, reject) => setTimeout(() => geminiOnce(body, key, signal).then(resolve, reject), HEDGE_MS));
+  try {
+    return await Promise.any([first, second]);
+  } catch (error) {
+    throw (error as AggregateError).errors?.[0] ?? error;
+  } finally {
+    stop.abort(); // the slower request is no longer needed
+  }
 }
 
 /** Plain wording for when Gemini is down or has no key, so a finished search still answers. */

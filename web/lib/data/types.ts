@@ -28,6 +28,8 @@ export type JobView = {
   corrected: boolean;
   replyText: string | null;
   replyAudioUrl: string | null;
+  /** The text is ready but the spoken reply is still being made: ask again shortly for the audio and word times. */
+  replyPending: boolean;
   replyTimings: WordTime[] | null;
   /** The photo the camera took for this job, as the processing server marked it. */
   photo: (Snapshot & { seenAt: string }) | null;
