@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
+import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
-import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
+import type { Box, DeviceStatus, Item, JobView, Photo, Sighting, WordTime } from "./types";
 
 /*
  * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
@@ -75,7 +75,11 @@ export class S3Store implements Store {
   private jobs = new Map<string, JobRec>();
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
+  private speaking = new Set<string>();
+  private picks = new Map<string, Promise<void>>(); // Gemini choosing the items, running while the Pi takes the photo
   private results: { at: number; rows: StoredResult[] } | null = null;
+  private known: { at: number; list: string[] } | null = null;
+  private parsed = new Map<string, Result>(); // result files never change once written, so each is downloaded once
 
   constructor() {
     const config = (endpoint?: string) => ({
@@ -89,6 +93,7 @@ export class S3Store implements Store {
     this.client = new S3Client(config(process.env.S3_ENDPOINT));
     // Signed URLs go to the browser, so they may need a different host than the server uses.
     this.signer = new S3Client(config(process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT));
+    void this.knownItems(); // warm the caches so the first question is as fast as the rest
   }
 
   private async getJson<T>(key: string): Promise<T | null> {
@@ -108,11 +113,11 @@ export class S3Store implements Store {
 
   /** Objects under a prefix. Listing is what the credentials allow for results/ and incoming/; a missing key is not an error. */
   private async list(prefix: string, max = 5000) {
-    const out: { key: string; at: Date }[] = [];
+    const out: { key: string; at: Date; size: number }[] = [];
     let token: string | undefined;
     do {
       const page = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }));
-      for (const o of page.Contents ?? []) if (o.Key && o.LastModified) out.push({ key: o.Key, at: o.LastModified });
+      for (const o of page.Contents ?? []) if (o.Key && o.LastModified) out.push({ key: o.Key, at: o.LastModified, size: o.Size ?? 0 });
       token = page.IsTruncated ? page.NextContinuationToken : undefined;
     } while (token && out.length < max);
     return out;
@@ -127,11 +132,17 @@ export class S3Store implements Store {
       await Promise.all(
         newest.map(async (f) => {
           const id = f.key.slice("results/".length, -"_result.json".length);
-          const result = await this.getJson<Result>(f.key).catch(() => null);
+          const cacheKey = `${f.key}@${+f.at}`;
+          let result = this.parsed.get(cacheKey) ?? null;
+          if (!result) {
+            result = await this.getJson<Result>(f.key).catch(() => null);
+            if (result) this.parsed.set(cacheKey, result);
+          }
           return result ? { id, at: f.at.toISOString(), result } : null;
         }),
       )
     ).filter((r): r is StoredResult => r !== null);
+    if (this.parsed.size > 300) this.parsed.clear();
     this.results = { at: Date.now(), rows };
     return rows;
   }
@@ -158,33 +169,52 @@ export class S3Store implements Store {
     };
   }
 
-  /** What the running model can find: the class list in the newest result that has one, else the trained classes. */
+  /** What the running model can find: the class list in the newest result that has one, else the trained classes. Cached for a minute. */
   private async knownItems(): Promise<string[]> {
+    if (this.known && Date.now() - this.known.at < 60_000) return this.known.list;
     try {
       const withList = (await this.recentResults()).find((r) => r.result.known?.length);
-      return withList?.result.known ?? KNOWN_ITEMS;
+      this.known = { at: Date.now(), list: withList?.result.known ?? KNOWN_ITEMS };
     } catch {
       return KNOWN_ITEMS;
     }
+    return this.known.list;
   }
 
   async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
+    const t0 = Date.now();
     let transcript = "";
     try {
       transcript = await transcribe(audio, `recording.${audioExtension(contentType)}`);
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
-    const { targets, unsupported } = await pickTargets(transcript, await this.knownItems());
+    const tStt = Date.now();
+    const known = await this.knownItems();
+    // Items named plainly go to the Pi at once. Otherwise the job goes with no items and Gemini picks them while the photo is
+    // taken; the detections in the result are enough to say whether each one is in view.
+    const targets = namedItems(transcript, known);
     const rec: JobRec = {
       id: randomUUID(),
       status: "pending",
       createdAt: new Date().toISOString(),
       transcript,
       targets,
-      unsupported,
+      unsupported: null,
     };
     console.log(`[job] ${rec.id} said ${JSON.stringify(transcript)} -> targets ${JSON.stringify(targets)}, writing jobs/`);
+    this.jobs.set(rec.id, rec);
+    if (!targets.length && transcript.trim()) {
+      this.picks.set(
+        rec.id,
+        pickTargets(transcript, known)
+          .then((picked) => {
+            const cur = this.jobs.get(rec.id);
+            if (cur) this.jobs.set(rec.id, { ...cur, targets: picked.targets, unsupported: picked.unsupported });
+          })
+          .catch((error) => console.error("[pick]", error)),
+      );
+    }
     // Every request goes to the bucket for the Pi to poll, even one that names no item: the photo still comes back.
     await this.client.send(
       new PutObjectCommand({
@@ -194,7 +224,7 @@ export class S3Store implements Store {
         ContentType: "application/json",
       }),
     );
-    this.jobs.set(rec.id, rec);
+    console.log(`[timing] ${rec.id.slice(0, 8)} send: speech-to-text ${tStt - t0} ms, writing job ${Date.now() - tStt} ms`);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
   }
@@ -253,8 +283,14 @@ export class S3Store implements Store {
     return running;
   }
 
-  private async narrateJob(rec: JobRec, correction?: boolean): Promise<JobRec> {
-    const detected = rec.result ?? ((await this.getJson<Result>(resultKey(rec.id))) as Result);
+  private async narrateJob(start: JobRec, correction?: boolean): Promise<JobRec> {
+    // Wait for Gemini's choice of items if it has not finished (it has had the photo's whole trip), but not for long.
+    await Promise.race([this.picks.get(start.id), new Promise((resolve) => setTimeout(resolve, 6000))]);
+    this.picks.delete(start.id);
+    const rec = this.jobs.get(start.id) ?? start;
+    const raw = rec.result ?? ((await this.getJson<Result>(resultKey(rec.id))) as Result);
+    // The processing server was not told which items to look for: say from its detections.
+    const detected = raw.status === "no_target" && rec.targets.length ? findings(rec.targets, raw) : raw;
     let result = detected;
     // The processing server only knows the classes it was trained on; an item we cannot seek arrives as "no_target".
     if (result.status === "no_target" && rec.unsupported) result = { ...result, status: "unsupported", target: rec.unsupported };
@@ -274,16 +310,10 @@ export class S3Store implements Store {
       result.status === "found" && result.matches[0]
         ? this.stored(rec.id, now, result, result.matches[0], result.target ?? result.matches[0].name)
         : null;
+    this.replies.delete(rec.id); // a correction replaces the earlier spoken reply
+    const tNarrate = Date.now();
     const text = await narrate(factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null));
-    let timings: WordTime[] | null = null;
-    try {
-      const spoken = await speak(text);
-      timings = spoken.timings;
-      this.replies.set(rec.id, spoken.audio);
-      for (const old of [...this.replies.keys()].slice(0, -REPLY_CACHE)) this.replies.delete(old);
-    } catch (error) {
-      console.error("[tts]", error); // the text still answers
-    }
+    const tText = Date.now();
 
     const done: JobRec = {
       ...rec,
@@ -293,13 +323,39 @@ export class S3Store implements Store {
       target: result.target,
       found: result.status === "found" ? true : result.status === "not_visible" ? false : null, // null: no item was searched for
       replyText: text,
-      replyTimings: timings,
+      replyTimings: null, // arrive with the audio
       photo: { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
       match,
       lastSighting: result.status === "not_visible" ? (earlier ?? null) : null,
     };
     this.jobs.set(rec.id, done);
+    this.startSpeech(rec.id, text);
+    void this.logTiming(rec, tNarrate, tText);
     return done;
+  }
+
+  /** The answer is shown as soon as the text is ready; the speech (audio and word times) follows in the background. */
+  private startSpeech(id: string, text: string) {
+    this.speaking.add(id);
+    speak(text)
+      .then((spoken) => {
+        this.replies.set(id, spoken.audio);
+        for (const old of [...this.replies.keys()].slice(0, -REPLY_CACHE)) this.replies.delete(old);
+        const rec = this.jobs.get(id);
+        if (rec) this.jobs.set(id, { ...rec, replyTimings: spoken.timings });
+      })
+      .catch((error) => console.error("[tts]", error)) // the text still answers
+      .finally(() => this.speaking.delete(id));
+  }
+
+  private async logTiming(rec: JobRec, tNarrate: number, tText: number) {
+    try {
+      const made = Date.parse(rec.createdAt);
+      const at = async (prefix: string) => (await this.list(prefix, 5)).map((o) => +o.at - made)[0] ?? "?";
+      console.log(`[timing] ${rec.id.slice(0, 8)} done: Pi photo +${await at(`incoming/${rec.id}.jpg`)} ms, result +${await at(photoKey(rec.id))} ms after the job; wording ${tText - tNarrate} ms`);
+    } catch {
+      // timing is only a log
+    }
   }
 
   private async sighting(s: Stored): Promise<Sighting> {
@@ -329,12 +385,31 @@ export class S3Store implements Store {
       corrected: rec.corrected ?? false,
       replyText: rec.replyText ?? null,
       replyAudioUrl: this.replies.has(rec.id) ? `/api/jobs/${rec.id}/audio` : null,
+      replyPending: this.speaking.has(rec.id),
       replyTimings: rec.replyTimings ?? null,
       photo: rec.photo ? { id: rec.photo.key, url: await this.sign(rec.photo.key), width: rec.photo.width, height: rec.photo.height, seenAt: rec.photo.seenAt } : null,
       match: rec.match ? await this.sighting(rec.match) : null,
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,
       error: rec.error ?? null,
     };
+  }
+
+  async listPhotos(): Promise<Photo[]> {
+    return (await this.list("incoming/"))
+      .filter((o) => o.key.endsWith(".jpg"))
+      .sort((a, b) => +b.at - +a.at)
+      .map((o) => ({ id: o.key.slice("incoming/".length, -".jpg".length), takenAt: o.at.toISOString(), bytes: o.size }));
+  }
+
+  async getPhoto(id: string) {
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null; // an id, never a path
+    try {
+      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: `incoming/${id}.jpg` }));
+      return (await res.Body?.transformToByteArray()) ?? null;
+    } catch (error) {
+      if (isMissing(error)) return null;
+      throw error;
+    }
   }
 
   /** This session's questions, then older results from the bucket (those have no question or reply text). */

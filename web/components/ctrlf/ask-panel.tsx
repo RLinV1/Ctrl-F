@@ -12,7 +12,7 @@ import { CogTrain } from "./cog-train";
 import { Narrator } from "./narrator";
 import { SnapshotFrame } from "./snapshot-frame";
 
-export const POLL_MS = 750;
+export const POLL_MS = 400;
 export const MIN_HOLD_S = 0.5;
 
 type Mic = "unknown" | "ready" | "denied" | "unavailable";
@@ -215,6 +215,23 @@ export function AskPanel() {
     };
   }, [jobId]);
 
+  // The answer shows as soon as its text is ready; fetch again until the spoken reply (audio and word times) is too.
+  useEffect(() => {
+    if (phase.kind !== "answered" || !phase.job.replyPending) return;
+    const id = phase.job.id;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const job: JobView = await res.json();
+        setPhase((p) => (p.kind === "answered" && p.job.id === id ? { ...p, job } : p));
+      } catch {
+        // the next change of phase tries again
+      }
+    }, POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
   const onHoldStart = () => {
     setBlocked(false);
     setPhase({ kind: "recording" });
@@ -328,7 +345,7 @@ export function AskPanel() {
                 {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
                 <SyncedTranscript
                   className="mt-2"
-                  key={`${answer.id}:${answer.corrected}`}
+                  key={`${answer.id}:${answer.corrected}:${answer.replyTimings ? 1 : 0}`}
                   onAutoplayBlocked={() => setBlocked(true)}
                   onPlayingChange={setSpeaking}
                   src={answer.replyAudioUrl}

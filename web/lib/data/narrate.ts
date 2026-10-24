@@ -18,7 +18,7 @@ export type Result = {
 /** Used until a result tells us what the running model can find: the classes in training/classes.py on main. */
 export const KNOWN_ITEMS = ["phone", "glasses", "remote", "watch", "headphones", "keys", "wallet", "airpods case", "airpods", "charger"];
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite" // about 0.6 s a reply; "gemini-flash-lite-latest" took about 4 s;
 const DEFAULT_VOICE = "JBFqnCBsd6RMkjVDRZzb"; // George, British
 
 const SYSTEM_PROMPT = `You are Sherlock Holmes, reborn as a witty steampunk inventor-detective, and you are the voice of Ctrl-F, a brass-and-gears device that finds lost belongings.
@@ -71,6 +71,16 @@ function entry(item: string, status: string, matches: Detection[], detections: D
   return out;
 }
 
+/** What the camera's detections say about the items asked for, when the processing server was not told which to look for. */
+export function findings(targets: string[], base: Result): Result {
+  const items: ItemResult[] = targets.map((item) => {
+    const matches = base.detections.filter((d) => d.name === item).sort((a, b) => b.conf - a.conf);
+    return { item, status: matches.length ? "found" : "not_visible", matches };
+  });
+  const first = items.find((i) => i.matches.length) ?? items[0];
+  return { ...base, status: first.matches.length ? "found" : "not_visible", target: first.item, matches: first.matches, items };
+}
+
 /** What Gemini is allowed to know. `lastSeen` is when a missing item was last in view, in words. */
 export function factsFor(result: Result, lastSeen?: string | null) {
   const facts: Record<string, unknown> = { status: result.status, item: result.target };
@@ -85,19 +95,37 @@ export function factsFor(result: Result, lastSeen?: string | null) {
   return facts;
 }
 
-async function gemini(body: object): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not set");
+/** One call to Gemini. A request that has not answered after HEDGE_MS is not abandoned but joined by a second; the first answer wins. */
+const HEDGE_MS = 1000;
+const GEMINI_TIMEOUT_MS = 3000; // a slow Gemini must not hold the answer; wording falls back to plain
+
+async function geminiOnce(body: object, key: string, signal: AbortSignal): Promise<string> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": key, "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal,
   });
   if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
   const data = await res.json();
   const parts: { text?: string }[] = data.candidates?.[0]?.content?.parts ?? [];
   return parts.map((p) => p.text ?? "").join("").trim();
+}
+
+async function gemini(body: object): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY is not set");
+  const stop = new AbortController();
+  const signal = AbortSignal.any([stop.signal, AbortSignal.timeout(GEMINI_TIMEOUT_MS)]);
+  const first = geminiOnce(body, key, signal);
+  const second = new Promise<string>((resolve, reject) => setTimeout(() => geminiOnce(body, key, signal).then(resolve, reject), HEDGE_MS));
+  try {
+    return await Promise.any([first, second]);
+  } catch (error) {
+    throw (error as AggregateError).errors?.[0] ?? error;
+  } finally {
+    stop.abort(); // the slower request is no longer needed
+  }
 }
 
 /** Plain wording for when Gemini is down or has no key, so a finished search still answers. */
@@ -123,10 +151,19 @@ export async function narrate(facts: Record<string, unknown>): Promise<string> {
   return plainReply(facts);
 }
 
+/** Known items named word for word in what was said; "phone" is dropped when "cell phone" is also there. */
+export function namedItems(said: string, known: string[]): string[] {
+  const text = ` ${said.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `; // words only, so "keys?" still matches
+  const hits = known.filter((k) => text.includes(` ${k} `) || text.includes(` ${k}s `));
+  return hits.filter((k) => !hits.some((other) => other !== k && other.includes(k)));
+}
+
 /** Which known items did the user ask for? `unsupported` is an item they named that we cannot find. */
 export async function pickTargets(transcript: string, known: string[]): Promise<{ targets: string[]; unsupported: string | null }> {
   const said = transcript.toLowerCase();
   if (!said.trim()) return { targets: [], unsupported: null };
+  const direct = namedItems(said, known);
+  if (direct.length) return { targets: direct, unsupported: null }; // saves a Gemini round trip when the item is named plainly
   try {
     const prompt =
       `Items we can find: ${JSON.stringify(known)}. The user said: ${JSON.stringify(transcript)}. ` +

@@ -16,6 +16,7 @@ for (const dir of [__dirname, process.cwd()]) {
 
 const nextConfig: NextConfig = {
   env: Object.fromEntries(SERVER_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k]!])),
+  devIndicators: false, // the Next.js badge in the corner of the dev server
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
