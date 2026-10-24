@@ -1,12 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result } from "./narrate";
@@ -15,21 +8,25 @@ import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
 
 /*
- * Everything lives in one bucket, no database. No audio is stored: the recording is transcribed and dropped, and the spoken reply is held in memory.
- *   jobs/<id>.json               the job record
- *   queue/<id>                   marker: a job waiting for the Pi
- *   incoming/<id>.json + .jpg    the Pi's photo and the items asked for -> desktop/server.py
- *   results/<id>_result.json/jpg desktop/server.py's answer
- *   memory.json                  items and sightings, for the Items and History screens
- *   heartbeat/desktop            touched by desktop/server.py every loop
+ * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
+ * jobs/ and read incoming/ and results/ (see docs/ARCHITECTURE.md). So:
+ *   jobs/<id>.json                web -> Pi:  the job (items to find). Written here, deleted when the Pi claims it.
+ *   incoming/<id>.json + .jpg     the Pi's photo and the items asked for
+ *   results/<id>_result.json/jpg  the processing server's answer. The Items, History and Results screens are
+ *                                 derived from these.
+ *   results/heartbeat             optional: touched by the processing server, for the Desktop light
+ * Job state (pending, claimed, the narration) is held in this server's memory. No audio is stored: the
+ * recording is transcribed and dropped, and the spoken reply is held in memory too.
  */
 
 const SIGN_SECONDS = 3600;
 const REPLY_CACHE = 20; // spoken replies kept in memory
+const JOB_CACHE = 200; // job records kept in memory
+const RESULTS_READ = 60; // newest results read to build items and history
+const RESULTS_TTL_MS = 3000;
 const STALE_PENDING_MS = 60_000;
 const STALE_MS = 120_000;
 const ONLINE_MS = { pi: 15_000, desktop: 60_000 } as const;
-const MEMORY_CAP = 500;
 const DEFAULT_SIZE = { width: 1280, height: 720 }; // what pi/capture.py shoots
 
 type Stored = {
@@ -57,19 +54,23 @@ type JobRec = {
   lastSighting?: Stored | null;
   error?: string | null;
 };
-type Memory = { items: Record<string, { lostCount: number }>; sightings: Stored[] };
+type StoredResult = { id: string; at: string; result: Result };
 
 export const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const toBox = (d: Detection): Box => ({ x: d.box[0], y: d.box[1], w: d.box[2] - d.box[0], h: d.box[3] - d.box[1] });
+const photoKey = (id: string) => `results/${id}_result.jpg`;
+const resultKey = (id: string) => `results/${id}_result.json`;
 
 export class S3Store implements Store {
   private bucket = process.env.S3_BUCKET || "ctrlf-snapshots";
   private client: S3Client;
   private signer: S3Client;
   private lastPi: number | null = null;
+  private jobs = new Map<string, JobRec>();
+  private queue: string[] = [];
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
-  private memoryLock: Promise<unknown> = Promise.resolve();
+  private results: { at: number; rows: StoredResult[] } | null = null;
 
   constructor() {
     const config = (endpoint?: string) => ({
@@ -85,32 +86,11 @@ export class S3Store implements Store {
     this.signer = new S3Client(config(process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT));
   }
 
-  private async getBytes(key: string): Promise<Uint8Array | null> {
+  private async getJson<T>(key: string): Promise<T | null> {
     try {
       const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
-      return (await res.Body?.transformToByteArray()) ?? null;
-    } catch (error) {
-      if (isMissing(error)) return null;
-      throw error;
-    }
-  }
-
-  private async getJson<T>(key: string): Promise<T | null> {
-    const bytes = await this.getBytes(key);
-    return bytes ? (JSON.parse(Buffer.from(bytes).toString("utf8")) as T) : null;
-  }
-
-  private put(key: string, body: Uint8Array | string, contentType?: string) {
-    return this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
-  }
-
-  private putJson(key: string, value: unknown) {
-    return this.put(key, JSON.stringify(value), "application/json");
-  }
-
-  private async head(key: string) {
-    try {
-      return await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      const bytes = await res.Body?.transformToByteArray();
+      return bytes ? (JSON.parse(Buffer.from(bytes).toString("utf8")) as T) : null;
     } catch (error) {
       if (isMissing(error)) return null;
       throw error;
@@ -121,17 +101,56 @@ export class S3Store implements Store {
     return getSignedUrl(this.signer, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: SIGN_SECONDS });
   }
 
-  /** Read-modify-write of memory.json, one at a time within this server. */
-  private mutateMemory<T>(fn: (m: Memory) => T): Promise<T> {
-    const run = async () => {
-      const memory = (await this.getJson<Memory>("memory.json")) ?? { items: {}, sightings: [] };
-      const out = fn(memory);
-      await this.putJson("memory.json", memory);
-      return out;
+  /** Objects under a prefix. Listing is what the credentials allow for results/ and incoming/; a missing key is not an error. */
+  private async list(prefix: string, max = 5000) {
+    const out: { key: string; at: Date }[] = [];
+    let token: string | undefined;
+    do {
+      const page = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }));
+      for (const o of page.Contents ?? []) if (o.Key && o.LastModified) out.push({ key: o.Key, at: o.LastModified });
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token && out.length < max);
+    return out;
+  }
+
+  /** The newest results, parsed. Cached for a few seconds because every page and poll asks. */
+  private async recentResults(): Promise<StoredResult[]> {
+    if (this.results && Date.now() - this.results.at < RESULTS_TTL_MS) return this.results.rows;
+    const files = (await this.list("results/")).filter((f) => f.key.endsWith("_result.json"));
+    const newest = files.sort((a, b) => +b.at - +a.at).slice(0, RESULTS_READ);
+    const rows = (
+      await Promise.all(
+        newest.map(async (f) => {
+          const id = f.key.slice("results/".length, -"_result.json".length);
+          const result = await this.getJson<Result>(f.key).catch(() => null);
+          return result ? { id, at: f.at.toISOString(), result } : null;
+        }),
+      )
+    ).filter((r): r is StoredResult => r !== null);
+    this.results = { at: Date.now(), rows };
+    return rows;
+  }
+
+  /** The best sighting of each item in each result, newest result first. */
+  private sightings(rows: StoredResult[]): Stored[] {
+    return rows.flatMap(({ id, at, result }) => {
+      const best = new Map<string, Detection>();
+      for (const d of result.detections ?? []) if (d.conf > (best.get(d.name)?.conf ?? 0)) best.set(d.name, d);
+      return [...best].map(([name, d]) => this.stored(id, at, result, d, name));
+    });
+  }
+
+  private stored(id: string, at: string, result: Result, d: Detection, label: string): Stored {
+    return {
+      id: `${id}:${label}`,
+      seenAt: at,
+      label,
+      confidence: d.conf,
+      box: toBox(d),
+      snapshotKey: photoKey(id),
+      width: result.width ?? DEFAULT_SIZE.width,
+      height: result.height ?? DEFAULT_SIZE.height,
     };
-    const next = this.memoryLock.then(run, run);
-    this.memoryLock = next.catch(() => undefined);
-    return next;
   }
 
   async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
@@ -150,40 +169,55 @@ export class S3Store implements Store {
       targets,
       unsupported,
     };
-    await this.putJson(`jobs/${rec.id}.json`, rec);
-    if (targets.length) await this.put(`queue/${rec.id}`, ""); // nothing to photograph otherwise; getJob answers it
+    if (targets.length) {
+      // The job goes to the bucket for the Pi; no items named means no photo is needed, and getJob answers it.
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: `jobs/${rec.id}.json`,
+          Body: JSON.stringify({ id: rec.id, targets, createdAt: rec.createdAt }),
+          ContentType: "application/json",
+        }),
+      );
+      this.queue.push(rec.id);
+    }
+    this.jobs.set(rec.id, rec);
+    for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
   }
 
   async claimNextJob() {
-    const list = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: "queue/" }));
-    const oldest = (list.Contents ?? []).filter((o) => o.Key).sort((a, b) => +a.LastModified! - +b.LastModified!)[0];
-    if (!oldest?.Key) return null;
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: oldest.Key })); // at most once
-    const id = oldest.Key.slice("queue/".length);
-    const rec = await this.getJson<JobRec>(`jobs/${id}.json`);
-    if (!rec || rec.status !== "pending") return null;
-    await this.putJson(`jobs/${id}.json`, { ...rec, status: "claimed" });
+    const id = this.queue.shift();
+    const rec = id ? this.jobs.get(id) : undefined;
+    if (!id || !rec) return null;
+    rec.status = "claimed";
+    // The job is taken: remove it from the bucket. A failed delete only leaves a stale object.
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: `jobs/${id}.json` })).catch((e) => console.error("[claim]", e));
     return { id, targets: rec.targets };
-  }
-
-  async replyAudio(id: string) {
-    return this.replies.get(id) ?? null;
   }
 
   async touchDevice() {
     this.lastPi = Date.now();
   }
 
+  async replyAudio(id: string) {
+    return this.replies.get(id) ?? null;
+  }
+
   async getJob(id: string) {
-    if (!/^[0-9a-f-]{36}$/.test(id)) return null;
-    let rec = await this.getJson<JobRec>(`jobs/${id}.json`);
+    let rec = this.jobs.get(id);
     if (!rec) return null;
     if (rec.status === "pending" || rec.status === "claimed") {
-      // The jpg lands after the json, so the jpg means the desktop is done. No targets means no photo is coming.
-      if (!rec.targets.length || (await this.head(`results/${id}_result.jpg`))) rec = await this.finish(rec);
+      // The jpg lands after the json, so both present means the processing server is done.
+      // No targets means no photo is coming.
+      if (!rec.targets.length || (await this.hasResult(id))) rec = await this.finish(rec);
     }
     return this.view(rec);
+  }
+
+  private async hasResult(id: string) {
+    const keys = new Set((await this.list(`results/${id}_result.`)).map((o) => o.key));
+    return keys.has(resultKey(id)) && keys.has(photoKey(id));
   }
 
   /** Narrate a job once, even if several polls arrive while it runs. */
@@ -202,43 +236,22 @@ export class S3Store implements Store {
   }
 
   private async narrateJob(rec: JobRec): Promise<JobRec> {
-    const photo = `results/${rec.id}_result.jpg`;
     const result: Result = rec.targets.length
-      ? ((await this.getJson<Result>(`results/${rec.id}_result.json`)) as Result)
+      ? ((await this.getJson<Result>(resultKey(rec.id))) as Result)
       : { status: rec.unsupported ? "unsupported" : "no_target", target: rec.unsupported, matches: [], detections: [] };
-    const width = result.width ?? DEFAULT_SIZE.width;
-    const height = result.height ?? DEFAULT_SIZE.height;
     const now = new Date().toISOString();
-    const stored = (d: Detection, label: string): Stored => ({
-      id: `${rec.id}:${label}`,
-      seenAt: now,
-      label,
-      confidence: d.conf,
-      box: toBox(d),
-      snapshotKey: photo,
-      width,
-      height,
-    });
 
-    const asked = (result.items ?? (result.target ? [{ item: result.target, status: result.status }] : [])).map((i) => i.item);
-    const missing = (result.items ?? []).filter((i) => i.status === "not_visible").map((i) => i.item);
-    if (!result.items && result.status === "not_visible" && result.target) missing.push(result.target);
-    const best = new Map<string, Detection>();
-    for (const d of result.detections) if (d.conf > (best.get(d.name)?.conf ?? 0)) best.set(d.name, d);
+    // Last seen: the newest earlier result with this item in it.
+    this.results = null;
+    const earlier = result.target
+      ? this.sightings((await this.recentResults()).filter((r) => r.id !== rec.id)).find((s) => s.label === result.target)
+      : undefined;
 
-    // Memory: what was just seen, and a miss for each item asked for but not in view.
-    const before = rec.targets.length
-      ? await this.mutateMemory((m) => {
-          const prior = m.sightings.find((s) => s.label === result.target);
-          for (const name of asked) m.items[name] ??= { lostCount: 0 };
-          for (const name of missing) m.items[name].lostCount += 1;
-          m.sightings = [...[...best].map(([name, d]) => stored(d, name)), ...m.sightings].slice(0, MEMORY_CAP);
-          return prior ?? null;
-        })
-      : null;
-
-    const match = result.status === "found" && result.matches[0] ? stored(result.matches[0], result.target ?? result.matches[0].name) : null;
-    const text = await narrate(factsFor(result, before ? relativeTime(before.seenAt, Date.now()) : null));
+    const match =
+      result.status === "found" && result.matches[0]
+        ? this.stored(rec.id, now, result, result.matches[0], result.target ?? result.matches[0].name)
+        : null;
+    const text = await narrate(factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null));
     let timings: WordTime[] | null = null;
     try {
       const spoken = await speak(text);
@@ -257,9 +270,9 @@ export class S3Store implements Store {
       replyText: text,
       replyTimings: timings,
       match,
-      lastSighting: match ? null : before,
+      lastSighting: match ? null : (earlier ?? null),
     };
-    await this.putJson(`jobs/${rec.id}.json`, done);
+    this.jobs.set(rec.id, done);
     return done;
   }
 
@@ -296,28 +309,48 @@ export class S3Store implements Store {
     };
   }
 
-  private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {
-    const m = (await this.getJson<Memory>("memory.json")) ?? { items: {}, sightings: [] };
-    const names = [...new Set([...KNOWN_ITEMS, ...Object.keys(m.items)])];
-    return names.map((name) => ({
-      item: { id: slug(name), name, lostCount: m.items[name]?.lostCount ?? 0 },
-      seen: m.sightings.find((s) => s.label === name) ?? null,
-    }));
+  /** This session's questions, then older results from the bucket (those have no question or reply text). */
+  async listJobs(limit: number) {
+    const mine = [...this.jobs.values()];
+    const known = new Set(mine.map((j) => j.id));
+    const older: JobRec[] = (await this.recentResults())
+      .filter((r) => !known.has(r.id))
+      .map(({ id, at, result }) => {
+        const first = result.matches[0];
+        return {
+          id,
+          status: "done",
+          createdAt: at,
+          transcript: "",
+          targets: [],
+          unsupported: null,
+          target: result.target,
+          found: result.status === "found",
+          match: result.status === "found" && first ? this.stored(id, at, result, first, result.target ?? first.name) : null,
+        };
+      });
+    const all = [...mine, ...older].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit);
+    return Promise.all(all.map((r) => this.view(r)));
   }
 
-  async listJobs(limit: number) {
-    const list = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: "jobs/" }));
-    const newest = (list.Contents ?? []).filter((o) => o.Key).sort((a, b) => +b.LastModified! - +a.LastModified!).slice(0, limit);
-    const recs = (await Promise.all(newest.map((o) => this.getJson<JobRec>(o.Key!)))).filter((r): r is JobRec => r !== null);
-    recs.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return Promise.all(recs.map((r) => this.view(r)));
+  private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {
+    const rows = await this.recentResults();
+    const lost: Record<string, number> = {};
+    for (const { result } of rows) {
+      const asked = result.items ?? (result.target ? [{ item: result.target, status: result.status }] : []);
+      for (const i of asked) if (i.status === "not_visible") lost[i.item] = (lost[i.item] ?? 0) + 1;
+    }
+    const seen = this.sightings(rows);
+    const names = [...new Set([...KNOWN_ITEMS, ...Object.keys(lost), ...seen.map((s) => s.label)])];
+    return names.map((name) => ({
+      item: { id: slug(name), name, lostCount: lost[name] ?? 0 },
+      seen: seen.find((s) => s.label === name) ?? null,
+    }));
   }
 
   async listItems() {
     const rows = await this.items();
-    const items: Item[] = await Promise.all(
-      rows.map(async ({ item, seen }) => ({ ...item, lastSeen: seen ? await this.sighting(seen) : null })),
-    );
+    const items: Item[] = await Promise.all(rows.map(async ({ item, seen }) => ({ ...item, lastSeen: seen ? await this.sighting(seen) : null })));
     return items.sort((a, b) => Date.parse(b.lastSeen?.seenAt ?? "") - Date.parse(a.lastSeen?.seenAt ?? "") || 0);
   }
 
@@ -328,14 +361,18 @@ export class S3Store implements Store {
   async itemSightings(id: string, { limit, before }: { limit: number; before?: string }) {
     const row = (await this.items()).find((r) => r.item.id === id);
     if (!row) return null;
-    const m = (await this.getJson<Memory>("memory.json")) ?? { items: {}, sightings: [] };
     const cutoff = before ? Date.parse(before) : Infinity;
-    const page = m.sightings.filter((s) => s.label === row.item.name && Date.parse(s.seenAt) < cutoff).slice(0, limit);
+    const page = this.sightings(await this.recentResults())
+      .filter((s) => s.label === row.item.name && Date.parse(s.seenAt) < cutoff)
+      .slice(0, limit);
     return Promise.all(page.map((s) => this.sighting(s)));
   }
 
+  /** The Pi is online while it polls this server. The desktop is seen by its newest result or heartbeat object. */
   async deviceStatus(): Promise<DeviceStatus[]> {
-    const desktop = (await this.head("heartbeat/desktop"))?.LastModified?.getTime() ?? null;
+    const beat = (await this.list("results/heartbeat", 10)).map((o) => +o.at);
+    const done = (await this.recentResults())[0];
+    const desktop = Math.max(0, ...beat, done ? Date.parse(done.at) : 0) || null;
     const at = (device: "pi" | "desktop", t: number | null): DeviceStatus => ({
       device,
       lastSeenAt: t ? new Date(t).toISOString() : null,

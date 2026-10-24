@@ -143,11 +143,11 @@ These are proposals. Change them while building, and update this file in the sam
 
 ## Dev pipeline (branch `dev`, S3 only)
 
-Postgres is skipped. One bucket holds jobs, photos, results and memory; the web server does STT, narration and TTS.
+Postgres is skipped. One bucket holds jobs, photos and results; the web server does STT, narration and TTS. The web app's S3 credentials are narrow: list and read `incoming/` and `results/`, write and delete `jobs/`. No audio is stored.
 
-1. Browser records and `POST /api/jobs` sends the recording as the request body. The web server runs ElevenLabs STT and Gemini item picking, drops the audio (no audio is stored in the bucket), writes `jobs/<id>.json` and a `queue/<id>` marker.
-2. `pi/agent.py` polls `GET /api/jobs/next` (bearer `PI_JOB_TOKEN`), gets `{id, targets}`, and `pi/capture.py` uploads `incoming/<id>.json` then `incoming/<id>.jpg`.
-3. `desktop/server.py` runs YOLO and writes `results/<id>_result.json` then `results/<id>_result.jpg`, and touches `heartbeat/desktop`.
-4. `GET /api/jobs/<id>` sees the result jpg, has Gemini word the reply from the result JSON, has ElevenLabs speak it (held in web server memory and served at `/api/jobs/<id>/audio`, with word timings), updates `memory.json` (sightings, lost counts) and marks the job done.
+1. Browser records and `POST /api/jobs` sends the recording as the request body. The web server runs ElevenLabs STT and Gemini item picking, drops the audio, writes `jobs/<id>.json` (`{id, targets, createdAt}`) and queues the job in memory.
+2. The Pi polls `GET /api/jobs/next` (bearer `PI_JOB_TOKEN`), gets `{id, targets}`; the web server deletes `jobs/<id>.json`. `pi/capture.py` uploads `incoming/<id>.json` then `incoming/<id>.jpg`.
+3. The processing server (`desktop/server.py`) runs YOLO and writes `results/<id>_result.json` then `results/<id>_result.jpg`. It may touch `results/heartbeat` for the Desktop light.
+4. `GET /api/jobs/<id>` sees both result files, has Gemini word the reply from the result JSON, and has ElevenLabs speak it (held in web server memory, served at `/api/jobs/<id>/audio`, with word timings).
 
-A request that names no known item skips the Pi and is answered from step 4 directly.
+Job state lives in web server memory, so a restart forgets jobs in flight. The Items, History and Results screens are derived from the newest 60 `results/*.json` files, so they survive restarts (older results show no question or reply text). A request that names no known item skips the Pi and is answered from step 4 directly.
