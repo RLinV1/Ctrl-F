@@ -14,7 +14,7 @@ Hands each voice request from the browser to the Raspberry Pi and back: the web 
 - **THEN** the response is `201` with an `audioKey` under the audio prefix and an `uploadUrl` that expires within 10 minutes
 
 ### Requirement: Create a job only for stored audio
-`POST /api/jobs` with an `audioKey` SHALL create a job with status `pending` only when an object exists at that key. Otherwise it SHALL reject the request and create no job.
+`POST /api/jobs` with an `audioKey` SHALL create a job with status `pending` only when an object exists at that key. Otherwise it SHALL reject the request and create no job. Jobs created by the website carry the source `web`.
 
 #### Scenario: Job created after upload
 - **WHEN** the browser has uploaded a clip to its slot and calls `POST /api/jobs` with that `audioKey`
@@ -23,6 +23,39 @@ Hands each voice request from the browser to the Raspberry Pi and back: the web 
 #### Scenario: Audio missing
 - **WHEN** `POST /api/jobs` names an `audioKey` with no stored object
 - **THEN** the response is `400` and no job row is created
+
+### Requirement: Create a job from typed text
+`POST /api/jobs` with `text` SHALL create a `pending` job whose transcript is that text, trimmed, with no audio, so speech-to-text is skipped. Empty text or text over 300 characters SHALL be rejected with `400`.
+
+#### Scenario: Typed question
+- **WHEN** the browser calls `POST /api/jobs` with `{ "text": "where are my glasses" }`
+- **THEN** the response is `201` with a `pending` job, and once done the job's transcript is "where are my glasses"
+
+#### Scenario: Empty or too long
+- **WHEN** the text is blank or longer than 300 characters
+- **THEN** the response is `400` and no job is created
+
+### Requirement: Camera button questions
+`POST /api/device/jobs` SHALL accept a recording from the camera's own mic as a raw `audio/*` body, authenticated only by the Pi's bearer token, store it privately, and create a `pending` job with source `device`. The Pi then claims it through `GET /api/jobs/next` like any job.
+
+#### Scenario: Button pressed
+- **WHEN** the Pi posts a 3-second webm recording with a valid token
+- **THEN** the response is `201` with the job `id`, the job's source is `device`, and the next claim returns it
+
+#### Scenario: Rejected upload
+- **WHEN** the token is wrong, the content type is not audio, or the body is empty
+- **THEN** the response is `401`, `400` or `400` respectively and no job is created
+
+### Requirement: Find the newest job from a source
+`GET /api/jobs/latest?source=device&since=<time>` SHALL return the `id` of the newest job from that source created after `since`, or `204` when there is none, so the page can show camera-button questions.
+
+#### Scenario: A press since the page started listening
+- **WHEN** a device job was created after `since`
+- **THEN** the response is `200` with its `id`
+
+#### Scenario: Nothing new
+- **WHEN** no device job was created after `since`
+- **THEN** the response is `204`
 
 ### Requirement: Pi claims the oldest pending job
 `GET /api/jobs/next` SHALL require the Pi's bearer token, atomically move the oldest `pending` job to `claimed` with a claim time, and return its `id`. Two concurrent calls SHALL NOT claim the same job.

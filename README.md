@@ -21,6 +21,7 @@ Theme: steampunk. The UI looks like brass and gears, and the narrator talks like
 | [docs/PRD.md](docs/PRD.md) | What we build and why. Requirements and scope. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data flow, data model, API contracts. |
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Chosen tools and the reason for each. |
+| [training/README.md](training/README.md) | Train custom YOLO weights from your labeled dataset. |
 
 ## Run locally
 

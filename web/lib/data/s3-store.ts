@@ -5,7 +5,7 @@ import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
-import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
+import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } from "./types";
 
 /*
  * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
@@ -41,6 +41,7 @@ type Stored = {
 };
 type JobRec = {
   id: string;
+  source?: JobSource;
   status: JobView["status"];
   createdAt: string;
   transcript: string;
@@ -181,7 +182,7 @@ export class S3Store implements Store {
     return this.known.list;
   }
 
-  async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
+  async createJob(audio: Uint8Array, contentType: string, source: JobSource = "web"): Promise<JobView> {
     const t0 = Date.now();
     let transcript = "";
     try {
@@ -189,6 +190,24 @@ export class S3Store implements Store {
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
+    console.log(`[timing] speech-to-text ${Date.now() - t0} ms`);
+    return this.queue(transcript, source);
+  }
+
+  /** A typed question needs no speech-to-text: the text is the transcript. */
+  async askText(text: string): Promise<JobView> {
+    return this.queue(text.trim(), "web");
+  }
+
+  async latestJobId(source: JobSource, since: string) {
+    const after = Date.parse(since);
+    const newest = [...this.jobs.values()]
+      .filter((j) => (j.source ?? "web") === source && Date.parse(j.createdAt) > after)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+    return newest?.id ?? null;
+  }
+
+  private async queue(transcript: string, source: JobSource): Promise<JobView> {
     const tStt = Date.now();
     const known = await this.knownItems();
     // Items named plainly go to the Pi at once. Otherwise the job goes with no items and Gemini picks them while the photo is
@@ -196,6 +215,7 @@ export class S3Store implements Store {
     const targets = namedItems(transcript, known);
     const rec: JobRec = {
       id: randomUUID(),
+      source,
       status: "pending",
       createdAt: new Date().toISOString(),
       transcript,
@@ -224,7 +244,7 @@ export class S3Store implements Store {
         ContentType: "application/json",
       }),
     );
-    console.log(`[timing] ${rec.id.slice(0, 8)} send: speech-to-text ${tStt - t0} ms, writing job ${Date.now() - tStt} ms`);
+    console.log(`[timing] ${rec.id.slice(0, 8)} send: writing job ${Date.now() - tStt} ms`);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
   }

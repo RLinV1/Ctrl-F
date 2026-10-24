@@ -1,0 +1,164 @@
+{
+  "width": 1280,
+  "height": 720,
+  "zones": {
+    "shelf": [
+      80,
+      90,
+      400,
+      90
+    ],
+    "desk": [
+      520,
+      330,
+      720,
+      130
+    ],
+    "side table": [
+      90,
+      400,
+      310,
+      110
+    ]
+  },
+  "items": {
+    "wallet": {
+      "w": 130,
+      "h": 82
+    },
+    "keys": {
+      "w": 104,
+      "h": 62
+    },
+    "glasses": {
+      "w": 164,
+      "h": 48
+    },
+    "airpods case": {
+      "w": 62,
+      "h": 52
+    },
+    "remote": {
+      "w": 160,
+      "h": 38
+    },
+    "watch": {
+      "w": 70,
+      "h": 92
+    }
+  },
+  "snapshots": [
+    {
+      "id": "snap-01",
+      "minutesAgo": 12,
+      "place": {
+        "wallet": [
+          640,
+          372
+        ],
+        "remote": [
+          180,
+          462
+        ],
+        "airpods case": [
+          300,
+          128
+        ]
+      }
+    },
+    {
+      "id": "snap-02",
+      "minutesAgo": 47,
+      "place": {
+        "wallet": [
+          610,
+          380
+        ],
+        "remote": [
+          180,
+          462
+        ],
+        "airpods case": [
+          300,
+          128
+        ],
+        "glasses": [
+          800,
+          360
+        ]
+      }
+    },
+    {
+      "id": "snap-03",
+      "minutesAgo": 128,
+      "place": {
+        "keys": [
+          130,
+          438
+        ],
+        "glasses": [
+          800,
+          360
+        ],
+        "airpods case": [
+          300,
+          128
+        ]
+      }
+    },
+    {
+      "id": "snap-04",
+      "minutesAgo": 300,
+      "place": {
+        "keys": [
+          700,
+          390
+        ],
+        "wallet": [
+          120,
+          418
+        ],
+        "remote": [
+          280,
+          462
+        ]
+      }
+    },
+    {
+      "id": "snap-05",
+      "minutesAgo": 1440,
+      "place": {
+        "keys": [
+          240,
+          118
+        ],
+        "wallet": [
+          660,
+          370
+        ],
+        "glasses": [
+          210,
+          452
+        ]
+      }
+    },
+    {
+      "id": "snap-06",
+      "minutesAgo": 2900,
+      "place": {
+        "wallet": [
+          330,
+          98
+        ],
+        "keys": [
+          740,
+          384
+        ],
+        "remote": [
+          600,
+          400
+        ]
+      }
+    }
+  ]
+}

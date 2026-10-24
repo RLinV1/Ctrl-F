@@ -1,13 +1,17 @@
-import type { DeviceStatus, Item, JobView, Sighting } from "./types";
+import type { DeviceStatus, Item, JobSource, JobView, Sighting } from "./types";
 
 export const SIGHTINGS_DEFAULT_LIMIT = 20;
 export const SIGHTINGS_MAX_LIMIT = 100;
 export const HISTORY_PAGE_SIZE = 12;
 
-/** What the route handlers and pages need from storage. The S3 store is the only implementation. */
+/** What the route handlers and pages need from storage: the S3 store, or the mock store when DATA_SOURCE=mock. */
 export interface Store {
   /** Transcribes the recording and picks the items asked for. Never throws on a bad transcript: it becomes a no-target job. */
-  createJob(audio: Uint8Array, contentType: string): Promise<JobView>;
+  createJob(audio: Uint8Array, contentType: string, source?: JobSource): Promise<JobView>;
+  /** A typed question: the text is the transcript, so speech-to-text is skipped. */
+  askText(text: string): Promise<JobView>;
+  /** The newest job from a source since a time, so the Ask page can pick up camera-button questions. */
+  latestJobId(source: JobSource, since: string): Promise<string | null>;
   /** The spoken reply for a job, if this server still holds it. */
   replyAudio(id: string): Promise<Buffer | null>;
   /** Also narrates the job once the desktop has written its result. */

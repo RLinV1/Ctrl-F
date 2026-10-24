@@ -24,9 +24,15 @@ MAP = [
 
 for path in sys.argv[1:]:
     src = open(path).read()
-    out = src
-    for pattern, repl in MAP:
-        out = re.sub(pattern, repl, out)
+    # Only inside string literals, where class names live; code is never touched
+    # (an earlier version deleted a variable named `shadow`).
+    def restyle(literal: re.Match) -> str:
+        text = literal.group(0)
+        for pattern, repl in MAP:
+            text = re.sub(pattern, repl, text)
+        return text
+
+    out = re.sub(r'"[^"\n]*"|`[^`]*`', restyle, src)
     # Tidy doubled spaces left inside class strings.
     out = re.sub(r'(className=\{?["`][^"`]*)', lambda m: re.sub(r" {2,}", " ", m.group(1)), out)
     open(path, "w").write(out)

@@ -13,6 +13,8 @@ export type Sighting = {
 };
 export type Item = { id: string; name: string; lostCount: number; lastSeen: Sighting | null };
 export type WordTime = { word: string; start: number; end: number };
+/** Where a question came from: this page, or the camera's own button and mic. */
+export type JobSource = "web" | "device";
 
 export type JobView = {
   id: string;

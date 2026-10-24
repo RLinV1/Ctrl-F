@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
+import { GREETINGS } from "../lib/greetings";
 
 export const TEST_PASSWORD = "brass-test";
 export const TEST_PI_TOKEN = "pi-test";
@@ -79,15 +80,32 @@ export async function stubStatus(page: Page, pi: boolean, desktop = true) {
   );
 }
 
-/** Waits until the talk control is hydrated; parts of a page hydrate separately. */
+/** Waits until the prompt is hydrated and the greeting has streamed in; parts of a page hydrate separately. */
 export async function hydrated(page: Page) {
-  await page.locator('[data-testid="talk"][data-live]').waitFor();
-  await page.getByText("Items tracked").waitFor();
+  await page.locator('[data-testid="prompt"][data-live]').waitFor();
+  await expectGreeting(page);
+}
+
+/** Picks one of the three ways to ask from the prompt's menu. */
+export async function chooseMode(page: Page, name: "Speak here" | "Type it" | "Camera button") {
+  await hydrated(page);
+  await page.getByRole("button", { name: /How to ask/ }).click();
+  await page.getByRole("menuitem", { name: new RegExp(name) }).click();
+  await expect(page.getByRole("button", { name: `How to ask: ${name}` })).toBeVisible();
+}
+
+/** Types a question into the prompt and sends it with Enter. */
+export async function typeQuestion(page: Page, text: string) {
+  await hydrated(page);
+  await page.getByLabel("What are you looking for?").fill(text);
+  await page.keyboard.press("Enter");
 }
 
 /** Press and hold the talk control with the mouse for `ms`. */
 export async function hold(page: Page, ms: number) {
-  await hydrated(page);
+  await chooseMode(page, "Speak here");
+  // The page opens the mic as it loads; under load that can take a while, and a hold before it is open records nothing.
+  await expect(page.locator('[data-mic="ready"]'), "the microphone is open").toHaveCount(1);
   const talk = page.getByTestId("talk");
   const box = (await talk.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -113,4 +131,14 @@ export async function stubMediaClock(page: Page) {
       return Promise.resolve();
     };
   });
+}
+
+/** Any of the narrator's greetings is what matches. */
+export const anyGreeting = new RegExp(GREETINGS.map((g) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"));
+
+/** The dialogue box shows one of the narrator's greetings. Returns which one. */
+export async function expectGreeting(page: Page): Promise<string> {
+  const dialogue = page.getByTestId("dialogue");
+  await expect(dialogue).toContainText(anyGreeting);
+  return (await dialogue.innerText()).trim();
 }
