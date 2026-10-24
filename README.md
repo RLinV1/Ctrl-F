@@ -5,11 +5,13 @@ Ctrl+F for the physical world. Ask out loud "where are my keys?" and Ctrl-F look
 ## How it works
 
 1. User speaks a request ("find my wallet").
-2. Audio is transcribed (ElevenLabs STT) and Gemini extracts the target item.
+2. Audio is transcribed (ElevenLabs STT). The transcript goes to the vision model, which identifies the target item.
 3. The Raspberry Pi captures a photo and sends it to the desktop.
 4. The desktop runs YOLO on the photo and matches detections to the target.
-5. The result is stored (snapshot + sighting row) and spoken back (Gemini text, ElevenLabs TTS).
+5. The result is stored (snapshot + sighting row) and spoken back (Gemini writes the reply as a witty steampunk narrator, ElevenLabs TTS voices it).
 6. History is kept, so Ctrl-F can answer "where did I last see it?" and "how often do I lose this?".
+
+Theme: steampunk. The UI looks like brass and gears, and the narrator talks like a witty Victorian inventor.
 
 ## Documentation
 
@@ -33,6 +35,6 @@ Pre-code. Repo holds documentation only. See the roadmap in [docs/PRD.md](docs/P
 ```
 web/       Next.js app (UI + API routes), deployed on Vercel
 desktop/   Python service: YOLO inference, talks to Pi, DB, and storage
-pi/        Python script on the Raspberry Pi: camera capture + mic
+pi/        Python script on the Raspberry Pi: camera + relay (polls jobs, forwards photo to desktop; the Pi has no mic)
 docs/      PRD, architecture, tech stack
 ```
