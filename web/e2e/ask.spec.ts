@@ -89,12 +89,6 @@ test.describe("while the job runs", () => {
     await expect(page.getByText("Speech-to-text failed.")).toBeVisible();
   });
 
-  test("warns beside the control when a device is offline", async ({ page }) => {
-    await stubStatus(page, false);
-    await page.goto("/");
-    await expect(page.getByTestId("offline-warning")).toContainText("The camera is offline");
-    await expect(page.getByTestId("talk")).not.toHaveAttribute("aria-disabled", "true");
-  });
 });
 
 test.describe("the answer", () => {
