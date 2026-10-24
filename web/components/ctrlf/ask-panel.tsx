@@ -243,6 +243,16 @@ export function AskPanel() {
     }
   };
 
+  const correct = async (found: boolean) => {
+    if (phase.kind !== "answered") return;
+    const res = await fetch(`/api/jobs/${phase.job.id}/correct`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ found }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    setPhase({ kind: "answered", job: await res.json(), at: Date.now() });
+  };
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
@@ -318,7 +328,7 @@ export function AskPanel() {
                 {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
                 <SyncedTranscript
                   className="mt-2"
-                  key={answer.id}
+                  key={`${answer.id}:${answer.corrected}`}
                   onAutoplayBlocked={() => setBlocked(true)}
                   onPlayingChange={setSpeaking}
                   src={answer.replyAudioUrl}
@@ -332,6 +342,7 @@ export function AskPanel() {
         </div>
 
         {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
+        {phase.kind === "answered" && <CorrectPrompt job={phase.job} key={`${phase.job.id}:${phase.job.corrected}`} onCorrect={correct} />}
       </section>
 
       {/* The right column: the answer slip once there is one, and the narrator standing in
@@ -339,12 +350,40 @@ export function AskPanel() {
       <div className="flex flex-col gap-4 md:col-span-3">
         {slip && answer && (
           <aside aria-label="Answer slip">
-            <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
+            <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={`${answer.id}:${answer.corrected}`} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
           </aside>
         )}
         <Narrator className="mt-auto ml-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
       </div>
     </div>
+  );
+}
+
+/** Optional: the user disagrees with the camera's verdict. */
+function CorrectPrompt({ job, onCorrect }: { job: JobView; onCorrect: (found: boolean) => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  if (job.found === null) return null;
+  const flip = !job.found;
+  return (
+    <p className="mt-3 text-[15px]" data-testid="correction">
+      <span className="text-ink-muted">{job.corrected ? "Corrected by you. " : "Not right? "}</span>
+      <button
+        className="underline underline-offset-4 hover:text-copper disabled:opacity-50"
+        disabled={state === "busy"}
+        onClick={async () => {
+          setState("busy");
+          try {
+            await onCorrect(flip);
+          } catch {
+            setState("failed");
+          }
+        }}
+        type="button"
+      >
+        {flip ? `The ${job.target ?? "item"} is in the photo` : `The ${job.target ?? "item"} is not in the photo`}
+      </button>
+      {state === "failed" && <span className="ml-2 text-copper">That could not be saved.</span>}
+    </p>
   );
 }
 

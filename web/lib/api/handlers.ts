@@ -33,6 +33,20 @@ export async function getReplyAudio(store: Store, id: string) {
   return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no reply audio", 404);
 }
 
+export async function postCorrection(store: Store, id: string, request: Request) {
+  let found: unknown;
+  try {
+    found = (await request.json())?.found;
+  } catch {
+    found = undefined;
+  }
+  if (typeof found !== "boolean") return error("found must be true or false", 400);
+  const job = await store.correctJob(id, found);
+  if (job === null) return error("job not found", 404);
+  if (job === "conflict") return error("this job has no verdict to correct", 409);
+  return json(job);
+}
+
 export async function getJob(store: Store, id: string) {
   const job = await store.getJob(id);
   return job ? json(job) : error("job not found", 404);

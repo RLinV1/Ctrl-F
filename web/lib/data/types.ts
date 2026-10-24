@@ -24,6 +24,8 @@ export type JobView = {
   target: string | null;
   itemId: string | null;
   found: boolean | null;
+  /** The user overrode the detector's verdict. */
+  corrected: boolean;
   replyText: string | null;
   replyAudioUrl: string | null;
   replyTimings: WordTime[] | null;

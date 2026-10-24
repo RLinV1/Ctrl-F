@@ -12,6 +12,8 @@ export interface Store {
   replyAudio(id: string): Promise<Buffer | null>;
   /** Also narrates the job once the desktop has written its result. */
   getJob(id: string): Promise<JobView | null>;
+  /** The user says the item is (or is not) in the photo after all: re-words the answer. Null when the job is unknown, "conflict" when it has no verdict to correct yet. */
+  correctJob(id: string, found: boolean): Promise<JobView | null | "conflict">;
   /** Newest first. Reads the records as they are: it does not narrate jobs that are still waiting. */
   listJobs(limit: number): Promise<JobView[]>;
   listItems(): Promise<Item[]>;

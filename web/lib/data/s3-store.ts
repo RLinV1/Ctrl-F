@@ -51,6 +51,9 @@ type JobRec = {
   replyText?: string;
   replyTimings?: WordTime[] | null;
   photo?: { key: string; seenAt: string; width: number; height: number } | null;
+  /** The processing server's own result, kept so a correction can start from it. */
+  result?: Result;
+  corrected?: boolean;
   match?: Stored | null;
   lastSighting?: Stored | null;
   error?: string | null;
@@ -217,16 +220,24 @@ export class S3Store implements Store {
     return next;
   }
 
+  async correctJob(id: string, found: boolean) {
+    const rec = this.jobs.get(id);
+    if (!rec) return null;
+    const verdict = rec.result?.status;
+    if (rec.status !== "done" || (verdict !== "found" && verdict !== "not_visible")) return "conflict" as const;
+    return this.view(await this.finish(rec, found));
+  }
+
   private async hasResult(id: string) {
     const keys = new Set((await this.list(`results/${id}_result.`)).map((o) => o.key));
     return keys.has(resultKey(id)) && keys.has(photoKey(id));
   }
 
   /** Narrate a job once, even if several polls arrive while it runs. */
-  private finish(rec: JobRec): Promise<JobRec> {
+  private finish(rec: JobRec, correction?: boolean): Promise<JobRec> {
     let running = this.finishing.get(rec.id);
     if (!running) {
-      running = this.narrateJob(rec)
+      running = this.narrateJob(rec, correction)
         .catch((error) => {
           console.error("[narrate]", error);
           return rec; // stays unanswered; the page times out as stale
@@ -237,10 +248,15 @@ export class S3Store implements Store {
     return running;
   }
 
-  private async narrateJob(rec: JobRec): Promise<JobRec> {
-    let result = (await this.getJson<Result>(resultKey(rec.id))) as Result;
+  private async narrateJob(rec: JobRec, correction?: boolean): Promise<JobRec> {
+    const detected = rec.result ?? ((await this.getJson<Result>(resultKey(rec.id))) as Result);
+    let result = detected;
     // The processing server only knows the classes it was trained on; an item we cannot seek arrives as "no_target".
     if (result.status === "no_target" && rec.unsupported) result = { ...result, status: "unsupported", target: rec.unsupported };
+    // The user's verdict beats the detector's. "Found" with no match has no box to draw and no place to name.
+    if (correction !== undefined) {
+      result = { ...result, status: correction ? "found" : "not_visible", matches: [], items: undefined };
+    }
     const now = new Date().toISOString();
 
     // Last seen: the newest earlier result with this item in it.
@@ -267,6 +283,8 @@ export class S3Store implements Store {
     const done: JobRec = {
       ...rec,
       status: "done",
+      result: detected,
+      corrected: correction !== undefined,
       target: result.target,
       found: result.status === "found" ? true : result.status === "not_visible" ? false : null, // null: no item was searched for
       replyText: text,
@@ -303,6 +321,7 @@ export class S3Store implements Store {
       target,
       itemId: target ? slug(target) : null,
       found: rec.found ?? null,
+      corrected: rec.corrected ?? false,
       replyText: rec.replyText ?? null,
       replyAudioUrl: this.replies.has(rec.id) ? `/api/jobs/${rec.id}/audio` : null,
       replyTimings: rec.replyTimings ?? null,

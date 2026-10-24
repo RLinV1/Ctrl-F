@@ -25,7 +25,7 @@ function outcome(job: JobView): string {
   if (job.status === "done") {
     if (!job.target) return "No item named";
     if (job.found === null) return "Cannot seek";
-    return job.found ? "Found" : "Not in view";
+    return `${job.found ? "Found" : "Not in view"}${job.corrected ? " (corrected)" : ""}`;
   }
   if (job.stale) return "No answer";
   return job.status === "claimed" ? "Looking" : "Waiting for the camera";
