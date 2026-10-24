@@ -6,6 +6,7 @@
 Proxies ElevenLabs and saves training photos so the API key stays on this machine.
 Listens on localhost only. Needs: pip install requests
 """
+import csv
 import json
 import os
 import re
@@ -15,6 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import yaml
+
 from stt_test import transcribe
 from tts_test import DEFAULT_VOICE, load_env, synthesize
 
@@ -23,6 +26,35 @@ ROOT = HERE.parent
 RAW = ROOT / "datasets" / "ctrlf" / "raw"
 REPORT = HERE / "out" / "report.json"
 PORT = 8000
+
+
+DATASET = ROOT / "datasets" / "appliances"
+SPLITS = ("train", "val", "test")
+
+
+def dataset_listing() -> dict:
+    """Every labeled appliance image with its boxes (normalized x1,y1,x2,y2) and photo credit."""
+    classes = list(yaml.safe_load((ROOT / "training" / "appliances.yaml").read_text())["names"].values())
+    credit = {}
+    attribution = DATASET / "ATTRIBUTION.csv"
+    if attribution.exists():
+        with open(attribution, newline="", encoding="utf-8") as f:
+            credit = {row["image_id"]: row for row in csv.DictReader(f)}
+    splits = {}
+    for split in SPLITS:
+        items = []
+        for image in sorted((DATASET / "images" / split).glob("*.jpg")):
+            boxes = []
+            label_file = DATASET / "labels" / split / f"{image.stem}.txt"
+            for line in label_file.read_text().splitlines() if label_file.exists() else []:
+                cls, cx, cy, w, h = line.split()
+                cx, cy, w, h = float(cx), float(cy), float(w), float(h)
+                boxes.append({"cls": int(cls), "name": classes[int(cls)], "box": [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]})
+            who = credit.get(image.stem, {})
+            items.append({"file": image.name, "boxes": boxes, "author": who.get("author", ""),
+                          "source": who.get("source", ""), "license": who.get("license", "")})
+        splits[split] = items
+    return {"classes": classes, "splits": splits}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -41,6 +73,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
+        if url.path == "/":  # people open this port by mistake; send them to the UI
+            self.send_response(302)
+            self.send_header("Location", "http://localhost:5173")
+            self.end_headers()
+            return
+        if url.path == "/api/dataset":
+            if not DATASET.exists():
+                return self._json(404, {"error": "No dataset yet. Run training/prepare_appliances.py first."})
+            return self._json(200, dataset_listing())
+        if url.path == "/api/dataimage":
+            query = parse_qs(url.query)
+            split, name = query.get("split", [""])[0], Path(query.get("name", [""])[0]).name  # .name blocks path traversal
+            image = DATASET / "images" / split / name
+            if split not in SPLITS or not name or not image.is_file():
+                return self._json(404, {"error": "image not found"})
+            return self._send(200, image.read_bytes(), "image/jpeg")
         if url.path == "/api/report":  # written by training/report.py
             if not REPORT.exists():
                 return self._json(404, {"error": "No report yet. Run training/report.py first."})

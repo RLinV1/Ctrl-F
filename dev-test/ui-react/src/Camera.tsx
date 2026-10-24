@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { readJson } from "./api";
 import StatusLine, { Status } from "./Status";
 
 // Live webcam preview. "Save photo" stores a JPEG under datasets/ctrlf/raw/<item>/ for YOLO training.
@@ -29,7 +30,7 @@ export default function Camera() {
     canvas.toBlob(
       async (blob) => {
         const res = await fetch(`/api/collect?item=${encodeURIComponent(item)}`, { method: "POST", body: blob });
-        const data = await res.json();
+        const data = await readJson(res);
         setStatus(res.ok ? { text: `Saved. ${data.count} photos of ${data.item}.` } : { text: data.error, error: true });
       },
       "image/jpeg",

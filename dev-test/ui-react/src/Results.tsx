@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { readJson } from "./api";
 
-type Box = { cls: number; name: string; box: [number, number, number, number]; conf?: number };
+export type Box = { cls: number; name: string; box: [number, number, number, number]; conf?: number };
 type ImageResult = { file: string; truth: Box[]; preds: Box[]; tp: number; fp: number; fn: number };
 type Report = {
   weights: string;
@@ -14,7 +15,7 @@ type Report = {
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-function Overlay({ boxes, color, dashed }: { boxes: Box[]; color: string; dashed?: boolean }) {
+export function Overlay({ boxes, color, dashed }: { boxes: Box[]; color: string; dashed?: boolean }) {
   return (
     <>
       {boxes.map((b, i) => (
@@ -51,7 +52,10 @@ export default function Results() {
 
   useEffect(() => {
     fetch("/api/report")
-      .then(async (res) => (res.ok ? setReport(await res.json()) : setError((await res.json()).error)))
+      .then(async (res) => {
+        const data = await readJson(res);
+        res.ok ? setReport(data) : setError(data.error ?? "Request failed");
+      })
       .catch((err: Error) => setError(err.message));
   }, []);
 

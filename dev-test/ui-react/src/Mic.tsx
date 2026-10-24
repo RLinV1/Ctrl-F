@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { readJson } from "./api";
 import StatusLine, { Status } from "./Status";
 
 // Click to start recording, click again to stop. The clip is sent to ElevenLabs (via the dev server)
@@ -36,7 +37,7 @@ export default function Mic() {
     setStatus({ text: `Transcribing ${Math.round(clip.size / 1024)} KB (${clip.type})...` });
     try {
       const res = await fetch("/api/stt", { method: "POST", body: clip });
-      const data = await res.json();
+      const data = await readJson(res);
       setStatus(res.ok ? { text: `"${data.text}"  (${data.seconds}s)` } : { text: `Server error: ${data.error}`, error: true });
     } catch (err) {
       setStatus({ text: `Could not reach the API server (is dev-test/server.py running?): ${(err as Error).message}`, error: true });
