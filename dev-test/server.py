@@ -1,8 +1,9 @@
 """Throwaway dev server for the dev-test UI. Delete the whole dev-test/ folder when the real web app lands.
 
-    python dev-test/server.py        # then open http://localhost:8000
+    python dev-test/server.py        # API on http://localhost:8000
+    cd dev-test/ui-react && npm run dev   # React UI on http://localhost:5173, proxies /api here
 
-Serves dev-test/ui/index.html and proxies ElevenLabs so the API key stays on this machine.
+Proxies ElevenLabs and saves training photos so the API key stays on this machine.
 Listens on localhost only. Needs: pip install requests
 """
 import json
@@ -37,10 +38,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
     def do_GET(self) -> None:
-        if urlparse(self.path).path == "/":
-            self._send(200, (HERE / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
-        else:
-            self._json(404, {"error": "not found"})
+        self._json(404, {"error": "API only. Open the React UI at http://localhost:5173"})
 
     def do_POST(self) -> None:
         url = urlparse(self.path)

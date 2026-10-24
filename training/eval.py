@@ -15,6 +15,7 @@ TARGET_RECALL = 0.8
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("weights", type=Path)
+    parser.add_argument("--data", type=Path, default=DATA, help="dataset yaml (default: training/data.yaml)")
     args = parser.parse_args()
     if not args.weights.exists():
         sys.exit(f"Weights not found: {args.weights}")
@@ -22,7 +23,7 @@ def main() -> None:
     from ultralytics import YOLO
 
     model = YOLO(str(args.weights))
-    box = model.val(data=str(DATA), split="test").box
+    box = model.val(data=str(args.data.resolve()), split="test").box
     print(f"mAP50: {box.map50:.3f}")
     failing = 0
     for class_id, recall in zip(box.ap_class_index, box.r):

@@ -16,6 +16,7 @@ RUNS = Path(__file__).resolve().parent.parent / "runs"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--data", type=Path, default=DATA, help="dataset yaml (default: training/data.yaml)")
     parser.add_argument("--model", default="yolo11n.pt", help="pretrained starting weights")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--imgsz", type=int, default=640)
@@ -27,7 +28,7 @@ def main() -> None:
     from ultralytics import YOLO  # imported late so --help works without it installed
 
     YOLO(args.model).train(
-        data=str(DATA),
+        data=str(args.data.resolve()),
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,
