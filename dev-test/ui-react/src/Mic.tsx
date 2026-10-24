@@ -137,28 +137,34 @@ export default function Mic() {
   return (
     <section>
       <h2>Speak to the mic</h2>
-      <video ref={video} autoPlay muted playsInline style={{ width: "100%", maxWidth: 640, display: "block", marginBottom: 8 }} />
-      <button onClick={toggle}>{recording ? "Stop" : "Start"}</button>
-      {clipUrl && (
-        <p>
-          <audio controls src={clipUrl} />
-        </p>
-      )}
-      <StatusLine status={status} />
-      {says && <p><b>{says}</b></p>}
-      {photoUrl && (
-        <div style={{ position: "relative", maxWidth: 640 }}>
-          <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
-          {result && <Overlay boxes={others} color="#777" dashed />}
-          {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
+      <div className="speak">
+        <div>
+          <video ref={video} autoPlay muted playsInline />
+          {photoUrl && (
+            <div style={{ position: "relative", marginTop: 8 }}>
+              <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
+              {result && <Overlay boxes={others} color="#777" dashed />}
+              {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
+            </div>
+          )}
         </div>
-      )}
-      {result && (
-        <p className="out">
-          Model {result.model}, {result.seconds}s. Green = what you asked for, gray = other things it knows. Detected:{" "}
-          {result.detections.map((d) => `${d.name} ${Math.round((d.conf ?? 0) * 100)}%`).join(", ") || "nothing"}.
-        </p>
-      )}
+        <div>
+          <button onClick={toggle} style={{ width: "100%", padding: "0.8rem" }}>{recording ? "Stop" : "Start"}</button>
+          {clipUrl && (
+            <p>
+              <audio controls src={clipUrl} style={{ width: "100%" }} />
+            </p>
+          )}
+          <StatusLine status={status} />
+          {says && <p><b>{says}</b></p>}
+          {result && (
+            <p className="out">
+              Model {result.model}, {result.seconds}s. Green = what you asked for, gray = other things it knows. Detected:{" "}
+              {result.detections.map((d) => `${d.name} ${Math.round((d.conf ?? 0) * 100)}%`).join(", ") || "nothing"}.
+            </p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
