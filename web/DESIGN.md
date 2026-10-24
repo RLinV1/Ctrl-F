@@ -25,6 +25,7 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 | --- | --- | --- |
 | Ask (`/`) | Where is it right now? | The talk control and, once answered, the photo with the lens |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
+| History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |
 
 ## Theme devices allowed (and why)

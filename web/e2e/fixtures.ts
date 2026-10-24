@@ -82,7 +82,7 @@ export async function stubStatus(page: Page, pi: boolean, desktop = true) {
 /** Waits until the talk control is hydrated; parts of a page hydrate separately. */
 export async function hydrated(page: Page) {
   await page.locator('[data-testid="talk"][data-live]').waitFor();
-  await page.getByText("Items tracked").waitFor();
+  await page.getByText("was the last thing seen").waitFor();
 }
 
 /** Press and hold the talk control with the mouse for `ms`. */
