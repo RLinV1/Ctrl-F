@@ -7,8 +7,10 @@ from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
+from dotenv import load_dotenv
 from ultralytics import YOLO
 
+load_dotenv()  # finds .env in this folder or a parent; real env vars still win
 BUCKET = os.environ["S3_BUCKET"]
 s3 = boto3.client(
     "s3",
