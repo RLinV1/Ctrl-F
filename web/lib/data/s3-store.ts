@@ -26,7 +26,7 @@ const RESULTS_READ = 60; // newest results read to build items and history
 const RESULTS_TTL_MS = 3000;
 const STALE_PENDING_MS = 60_000;
 const STALE_MS = 120_000;
-const DESKTOP_ONLINE_MS = 60_000;
+const DESKTOP_STALE_MS = 45_000; // a photo this old with no result means the processing server is broken
 const DEFAULT_SIZE = { width: 1280, height: 720 }; // what pi/capture.py shoots
 
 type Stored = {
@@ -50,6 +50,7 @@ type JobRec = {
   found?: boolean | null;
   replyText?: string;
   replyTimings?: WordTime[] | null;
+  claimedAt?: number;
   photo?: { key: string; seenAt: string; width: number; height: number } | null;
   /** The processing server's own result, kept so a correction can start from it. */
   result?: Result;
@@ -69,6 +70,7 @@ export class S3Store implements Store {
   private bucket = process.env.S3_BUCKET || "ctrlf-snapshots";
   private client: S3Client;
   private signer: S3Client;
+  private desktopDown = false; // set when a photo sat unprocessed, cleared when a result arrives
   private cameraDown = false; // set when a job was not picked up in time, cleared when the Pi next takes one
   private jobs = new Map<string, JobRec>();
   private finishing = new Map<string, Promise<JobRec>>();
@@ -207,10 +209,13 @@ export class S3Store implements Store {
     if (rec.status === "pending" || rec.status === "claimed") {
       // The jpg lands after the json, so both present means the processing server is done.
       if (await this.hasResult(id)) rec = await this.finish(rec);
-      else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed" });
+      else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed", claimedAt: Date.now() });
+      // Devices count as online until a job shows otherwise.
       if (rec.status === "pending" && Date.now() - Date.parse(rec.createdAt) > STALE_PENDING_MS) this.cameraDown = true;
+      if (rec.status === "claimed" && Date.now() - (rec.claimedAt ?? Date.now()) > DESKTOP_STALE_MS) this.desktopDown = true;
     }
     if (rec.status === "claimed" || rec.status === "done") this.cameraDown = false;
+    if (rec.status === "done" && rec.result) this.desktopDown = false;
     return this.view(rec);
   }
 
@@ -392,7 +397,7 @@ export class S3Store implements Store {
     return Promise.all(page.map((s) => this.sighting(s)));
   }
 
-  /** Neither device talks to this server. The camera counts as online until a job goes unclaimed, and the desktop is seen by its newest result or heartbeat object. */
+  /** Neither device talks to this server. The camera counts as online until a job goes unclaimed, and the desktop likewise, until a photo goes unprocessed. */
   async deviceStatus(): Promise<DeviceStatus[]> {
     const shot = Math.max(0, ...(await this.list("incoming/", 5000)).map((o) => +o.at)) || null;
     const beat = (await this.list("results/heartbeat", 10)).map((o) => +o.at);
@@ -401,7 +406,7 @@ export class S3Store implements Store {
     const seen = (t: number | null) => (t ? new Date(t).toISOString() : null);
     return [
       { device: "pi", lastSeenAt: seen(shot), online: !this.cameraDown },
-      { device: "desktop", lastSeenAt: seen(desktop), online: desktop !== null && Date.now() - desktop <= DESKTOP_ONLINE_MS },
+      { device: "desktop", lastSeenAt: seen(desktop), online: !this.desktopDown },
     ];
   }
 }
