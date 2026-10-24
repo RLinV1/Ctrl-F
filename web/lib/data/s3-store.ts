@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result } from "./narrate";
+import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
@@ -273,7 +273,7 @@ export class S3Store implements Store {
       label: s.label,
       confidence: s.confidence,
       box: s.box,
-      zone: null,
+      zone: `${where([s.box.x, s.box.y, s.box.x + s.box.w, s.box.y + s.box.h])} of the frame`, // no named places yet: say where in the photo
       snapshot: { id: s.snapshotKey, url: await this.sign(s.snapshotKey), width: s.width, height: s.height },
     };
   }
