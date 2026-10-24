@@ -356,7 +356,7 @@ function AskSession() {
 
   return (
     <div className="flex min-h-[calc(100dvh-120px)] flex-col gap-4">
-      <div className="flex flex-1 items-center justify-center" data-phase={phase.kind}>
+      <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
         <Stage
           answer={answer}
           answeredAt={phase.kind === "answered" ? phase.at : 0}

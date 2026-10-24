@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SIGHTINGS_MAX_LIMIT, type Store } from "../store";
-import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, Snapshot } from "../types";
+import type { Box, DeviceStatus, Item, JobSource, JobView, Photo, Sighting, Snapshot } from "../types";
 import replies from "./replies.json";
 import scenes from "./scenes.json";
 
@@ -321,6 +321,15 @@ export class MockStore implements Store {
     if (view?.status !== "done" || job.scenario.found === null) return "conflict" as const;
     job.correction = found;
     return this.getJob(id);
+  }
+
+  /** The mock has no raw camera photos to download: its pictures are drawings in public/mock. */
+  async listPhotos(): Promise<Photo[]> {
+    return [];
+  }
+
+  async getPhoto() {
+    return null;
   }
 
   /** Newest first. */

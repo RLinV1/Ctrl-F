@@ -104,6 +104,8 @@ export async function typeQuestion(page: Page, text: string) {
 /** Press and hold the talk control with the mouse for `ms`. */
 export async function hold(page: Page, ms: number) {
   await chooseMode(page, "Speak here");
+  // The page opens the mic as it loads; under load that can take a while, and a hold before it is open records nothing.
+  await expect(page.locator('[data-mic="ready"]'), "the microphone is open").toHaveCount(1);
   const talk = page.getByTestId("talk");
   const box = (await talk.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
