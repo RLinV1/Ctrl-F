@@ -114,7 +114,8 @@ export function Stage({
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [photoShown, setPhotoShown] = useState(true);
+  // The narrator speaks first; the ▼ in the dialogue box brings the camera's photo forward.
+  const [photoShown, setPhotoShown] = useState(false);
   const photo = photoOf(answer);
   const name = answer?.target ?? "item";
   const { words, shown, current, onEnded } = useReveal(answer, audioRef, playing, blocked);
@@ -176,16 +177,16 @@ export function Stage({
 
   return (
     <div className="w-full max-w-[1040px]" data-testid="stage">
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: a convenience; the toggle button is the keyboard path */}
-      <div
-        className={cn("relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video", photo && "cursor-pointer")}
-        onClick={() => photo && setPhotoShown((s) => !s)}
-      >
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video">
         <Backdrop />
         {/* eslint-disable-next-line @next/next/no-img-element -- a transparent PNG; the optimiser is off locally */}
         <img
           alt="The narrator, a detective in a deerstalker with brass goggles and a pipe"
-          className="absolute bottom-0 left-1/2 h-[92%] w-auto max-w-none -translate-x-1/2 select-none"
+          className={cn(
+            "absolute bottom-0 left-1/2 h-[92%] w-auto max-w-none -translate-x-1/2 select-none transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
+            photo && photoShown ? "translate-y-[6%] opacity-0" : "translate-y-0 opacity-100",
+          )}
+          data-narrator-shown={!(photo && photoShown) || undefined}
           draggable={false}
           src="/narrator.png"
         />
@@ -195,7 +196,7 @@ export function Stage({
             aria-hidden={!photoShown}
             className={cn(
               "absolute inset-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
-              photoShown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-[18%] opacity-0",
+              photoShown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-[4%] opacity-0",
             )}
             data-shown={photoShown || undefined}
             data-testid="camera-view"
@@ -215,7 +216,7 @@ export function Stage({
           </div>
         )}
 
-        {caption && (
+        {caption && (!photo || photoShown) && (
           <p className="absolute top-3 left-3 max-w-[80%] bg-ink/85 px-3 py-1.5 text-paper text-sm">{caption}</p>
         )}
 
@@ -225,7 +226,6 @@ export function Stage({
           aria-live="polite"
           className="absolute inset-x-[3%] bottom-[4%] min-h-[30%] border-brass border-t-2 bg-ink/85 px-5 pt-6 pb-4 text-paper"
           data-testid={answer ? "answer" : "dialogue"}
-          onClick={(e) => e.stopPropagation()}
         >
           <span className="absolute -top-4 left-4 bg-brass px-4 py-1 font-heading font-bold text-ink text-lg">{SPEAKER}</span>
           {answer?.transcript && <p className="mb-1 text-paper/70 text-sm">You asked: “{answer.transcript}”</p>}
@@ -250,15 +250,6 @@ export function Stage({
 
           <div className="mt-3 flex items-center justify-end gap-3">
             {blocked && <span className="text-paper/80 text-sm">Press play to hear the answer.</span>}
-            {photo && (
-              <button
-                className="border border-paper/40 px-3 py-1 text-sm hover:bg-paper/10"
-                onClick={() => setPhotoShown((s) => !s)}
-                type="button"
-              >
-                {photoShown ? "Show the narrator" : "Show the photo"}
-              </button>
-            )}
             {answer?.replyAudioUrl && (
               <button
                 aria-label={playing ? "Pause the reply" : "Play the reply"}
@@ -268,6 +259,28 @@ export function Stage({
                 type="button"
               >
                 {playing ? <Pause aria-hidden className="size-4" fill="currentColor" /> : <Play aria-hidden className="size-4 translate-x-px" fill="currentColor" />}
+              </button>
+            )}
+            {photo && (
+              // The visual novel's "next" arrow: it bobs to invite a click, dips on hover, and
+              // swaps the narrator for the camera's photo (and back).
+              <button
+                aria-label={photoShown ? "Show the narrator" : "Show the camera's photo"}
+                aria-pressed={photoShown}
+                className="group flex size-9 items-center justify-center text-brass outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                data-testid="next"
+                onClick={() => setPhotoShown((s) => !s)}
+                type="button"
+              >
+                <span className="motion-safe:animate-[vn-nudge_1.1s_ease-in-out_infinite] group-hover:[animation-play-state:paused]">
+                  <svg
+                    aria-hidden
+                    className="block h-3 w-4 transition-transform duration-200 ease-out group-hover:translate-y-1"
+                    viewBox="0 0 16 12"
+                  >
+                    <polygon fill="currentColor" points="0,0 16,0 8,12" />
+                  </svg>
+                </span>
               </button>
             )}
           </div>

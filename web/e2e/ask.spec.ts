@@ -105,6 +105,7 @@ test.describe("the answer", () => {
     await hold(page, 900);
     const found = page.getByTestId("found");
     await expect(found).toBeVisible();
+    await page.getByTestId("next").click();
     await expect(found.getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
     await expect(page.getByTestId("found-caption")).toContainText("91% sure");
     await expect(page.getByTestId("found-caption")).toContainText("on the desk");
@@ -154,6 +155,7 @@ test.describe("the answer", () => {
     await page.goto("/");
     await hold(page, 900);
     await expect(page.getByTestId("not-found")).toBeVisible();
+    await page.getByTestId("next").click();
     const stage = page.getByTestId("stage");
     await expect(stage).toContainText("Not in view · last seen 3 h ago on the side table");
     await expect(stage.getByRole("link", { name: "See where the keys have been" })).toHaveAttribute("href", "/items/item-keys");
@@ -192,20 +194,28 @@ test("the camera view stays hidden until a question is asked", async ({ page }) 
   await expect(page.getByTestId("camera-view")).toHaveCount(0);
   await stubJob(page, foundWallet());
   await typeQuestion(page, "where is my wallet");
-  await expect(page.getByTestId("camera-view")).toBeVisible();
+  await expect(page.getByTestId("camera-view")).toBeAttached();
+  await page.getByTestId("next").click();
   await expect(page.getByTestId("found").getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
 });
 
-test("clicking the stage lowers the photo to show the narrator, and raises it again", async ({ page }) => {
+test("the ▼ swaps the narrator for the camera's photo, and back", async ({ page }) => {
   await page.goto("/");
   await stubJob(page, foundWallet());
   await typeQuestion(page, "where is my wallet");
   const photo = page.getByTestId("camera-view");
-  await expect(photo).toHaveAttribute("data-shown", "true");
-  await photo.click({ position: { x: 200, y: 60 } });
+  const next = page.getByTestId("next");
+  // The narrator speaks first; the photo waits behind him.
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
   await expect(photo).not.toHaveAttribute("data-shown", "true");
-  await page.getByRole("button", { name: "Show the photo" }).click();
+  await expect(next).toHaveAccessibleName("Show the camera's photo");
+  await next.click();
   await expect(photo).toHaveAttribute("data-shown", "true");
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(0);
+  await expect(page.getByTestId("found-caption")).toBeVisible();
+  await next.click();
+  await expect(photo).not.toHaveAttribute("data-shown", "true");
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
 });
 
 test("the narrator greets with the last thing seen before any question", async ({ page }) => {
