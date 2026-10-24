@@ -16,6 +16,8 @@ export interface Store {
   touchDevice(device: "pi"): Promise<void>;
   /** Also narrates the job once the desktop has written its result. */
   getJob(id: string): Promise<JobView | null>;
+  /** Newest first. Reads the records as they are: it does not narrate jobs that are still waiting. */
+  listJobs(limit: number): Promise<JobView[]>;
   listItems(): Promise<Item[]>;
   getItem(id: string): Promise<Item | null>;
   itemSightings(id: string, opts: { limit: number; before?: string }): Promise<Sighting[] | null>;

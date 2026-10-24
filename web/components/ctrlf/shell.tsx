@@ -12,6 +12,7 @@ import { Mark } from "./mark";
 const NAV = [
   { href: "/", label: "Ask" },
   { href: "/items", label: "Items" },
+  { href: "/results", label: "Results" },
 ] as const;
 
 function isActive(pathname: string | null, href: string) {

@@ -328,6 +328,14 @@ export class S3Store implements Store {
     }));
   }
 
+  async listJobs(limit: number) {
+    const list = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: "jobs/" }));
+    const newest = (list.Contents ?? []).filter((o) => o.Key).sort((a, b) => +b.LastModified! - +a.LastModified!).slice(0, limit);
+    const recs = (await Promise.all(newest.map((o) => this.getJson<JobRec>(o.Key!)))).filter((r): r is JobRec => r !== null);
+    recs.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return Promise.all(recs.map((r) => this.view(r)));
+  }
+
   async listItems() {
     const rows = await this.items();
     const items: Item[] = await Promise.all(
