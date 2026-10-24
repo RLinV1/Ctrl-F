@@ -38,6 +38,7 @@ ELEVENLABS_API_KEY
 ELEVENLABS_VOICE_ID
 DATABASE_URL              # e.g. postgresql://ctrlf:ctrlf@localhost:5432/ctrlf
 S3_ENDPOINT               # e.g. http://localhost:8333
+S3_REGION                # AWS region, e.g. us-east-1
 S3_BUCKET
 S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY
