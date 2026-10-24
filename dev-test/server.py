@@ -19,7 +19,9 @@ from stt_test import transcribe
 from tts_test import DEFAULT_VOICE, load_env, synthesize
 
 HERE = Path(__file__).resolve().parent
-RAW = HERE.parent / "datasets" / "ctrlf" / "raw"
+ROOT = HERE.parent
+RAW = ROOT / "datasets" / "ctrlf" / "raw"
+REPORT = HERE / "out" / "report.json"
 PORT = 8000
 
 
@@ -38,6 +40,17 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
     def do_GET(self) -> None:
+        url = urlparse(self.path)
+        if url.path == "/api/report":  # written by training/report.py
+            if not REPORT.exists():
+                return self._json(404, {"error": "No report yet. Run training/report.py first."})
+            return self._send(200, REPORT.read_bytes(), "application/json")
+        if url.path == "/api/image":  # a dataset image named in the report
+            name = Path(parse_qs(url.query).get("name", [""])[0]).name  # .name blocks path traversal
+            folder = ROOT / json.loads(REPORT.read_text())["image_dir"] if REPORT.exists() else None
+            if not name or folder is None or not (folder / name).is_file():
+                return self._json(404, {"error": "image not found"})
+            return self._send(200, (folder / name).read_bytes(), "image/jpeg")
         self._json(404, {"error": "API only. Open the React UI at http://localhost:5173"})
 
     def do_POST(self) -> None:
