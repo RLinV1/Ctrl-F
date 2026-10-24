@@ -17,8 +17,10 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import requests
 import yaml
 from find import describe, extract_target, match
+from narrator import MODEL, narrate
 from PIL import Image
 
 from stt_test import transcribe
@@ -65,7 +67,7 @@ def find(jpeg: bytes, transcript: str) -> dict:
     matches = match(target, detections) if supported else []
     status, message = describe(target, supported, matches, known)
     return {"transcript": transcript, "target": target, "status": status, "message": message, "matches": matches,
-            "detections": detections, "model": WEIGHTS.name, "seconds": round(time.perf_counter() - started, 2)}
+            "known": known, "detections": detections, "model": WEIGHTS.name, "seconds": round(time.perf_counter() - started, 2)}
 
 
 def dataset_listing() -> dict:
@@ -156,7 +158,14 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"[stt] heard: {text!r}", flush=True)
                 self._json(200, {"text": text, "seconds": round(time.perf_counter() - started, 1)})
             elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
-                self._json(200, find(self._body(), parse_qs(url.query).get("text", [""])[0]))
+                result = find(self._body(), parse_qs(url.query).get("text", [""])[0])
+                result["narration"] = None  # the UI falls back to the plain "message" when Gemini is unavailable
+                if os.environ.get("GEMINI_API_KEY"):
+                    try:
+                        result["narration"] = narrate(result, os.environ["GEMINI_API_KEY"], os.environ.get("GEMINI_MODEL") or MODEL)
+                    except (SystemExit, requests.RequestException, KeyError, IndexError) as error:
+                        print(f"[narrator] {error}", flush=True)
+                self._json(200, result)
             else:
                 self._json(404, {"error": "not found"})
         except FileNotFoundError as error:  # no trained weights yet

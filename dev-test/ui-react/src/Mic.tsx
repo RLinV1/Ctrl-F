@@ -8,6 +8,7 @@ type Found = {
   target: string | null;
   status: "found" | "not_visible" | "unsupported" | "no_target";
   message: string;
+  narration: string | null;
   matches: Box[];
   detections: Box[];
   model: string;
@@ -110,7 +111,7 @@ export default function Mic() {
         </p>
       )}
       <StatusLine status={status} />
-      {result && <p><b>{result.message}</b></p>}
+      {result && <p><b>{result.narration ?? result.message}</b></p>}
       {photoUrl && (
         <div style={{ position: "relative", maxWidth: 640 }}>
           <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
