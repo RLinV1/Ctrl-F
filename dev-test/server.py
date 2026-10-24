@@ -22,7 +22,7 @@ import requests
 import yaml
 from photo import crop_box, rotate_box
 from find import describe_all, extract_targets, merge_detections
-from narrator import MODEL, narrate
+from narrator import MODEL, narrate, pick_targets
 from PIL import Image, ImageOps
 
 from stt_test import transcribe
@@ -33,6 +33,22 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "training"))
 from classes import CLASSES  # noqa: E402  the labeler offers the same classes the model is trained on
 REPORT = HERE / "out" / "report.json"
+
+
+def s3_client():
+    """S3 client from the S3_* keys in .env, so nobody needs the AWS CLI or ~/.aws set up."""
+    import boto3
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ.get("S3_ENDPOINT") or None,
+        region_name=os.environ.get("S3_REGION") or None,
+        aws_access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or None,
+        aws_secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or None,
+    )
+
+
+def s3_bucket() -> str:
+    return os.environ.get("S3_BUCKET") or "ctrlf-snapshots"
 PORT = 8000
 
 
@@ -292,6 +308,45 @@ def delete_dataset(key: str) -> int:
     return len(doomed)
 
 
+def s3_has(key: str) -> bool:
+    try:
+        s3_client().head_object(Bucket=s3_bucket(), Key=key)
+        return True
+    except s3_client().exceptions.ClientError:
+        return False
+
+
+def pick_items(text: str) -> dict:
+    """Gemini picks the items asked for from the transcript; the keyword matcher in find.py is the fallback without a key."""
+    key = os.environ.get("GEMINI_API_KEY")
+    if key:
+        try:
+            return pick_targets(text, CLASSES, key, os.environ.get("GEMINI_MODEL") or MODEL)
+        except (SystemExit, requests.RequestException, KeyError, IndexError, ValueError) as error:
+            print(f"[narrator] could not pick the item: {error}", flush=True)
+    return {"targets": [t[0] for t in extract_targets(text, CLASSES) if t[1]], "unsupported": None}
+
+
+def pi_find(text: str) -> dict:
+    """Pick the item(s), drop jobs/<id>.json (with them) for the Pi, and wait for incoming/<id>.jpg. results/<id>_result.* come from elsewhere."""
+    picked = pick_items(text)
+    if not picked["targets"]:  # nothing to look for: answer now, no photo
+        status = "unsupported" if picked["unsupported"] else "no_target"
+        said = {"status": status, "target": picked["unsupported"], "matches": [], "known": CLASSES}
+        return {"job": None, "photo": None, "narration": narration_for(said), "message": "I do not know which item to look for."}
+    s3, bucket = s3_client(), s3_bucket()
+    job = uuid.uuid4().hex[:8]
+    key = f"incoming/{job}.jpg"
+    s3.put_object(Bucket=bucket, Key=f"jobs/{job}.json", Body=json.dumps({"text": text, "targets": picked["targets"]}).encode())
+    deadline = time.time() + 30
+    while not s3_has(key):
+        if time.time() > deadline:
+            s3.delete_object(Bucket=bucket, Key=f"jobs/{job}.json")  # unclaimed: do not leave a stale job for the Pi
+            raise TimeoutError("the Pi did not upload a photo")
+        time.sleep(1)
+    return {"job": job, "photo": key, "targets": picked["targets"]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
@@ -315,6 +370,31 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url.path == "/api/models":
             return self._json(200, model_listing())
+        if url.path == "/api/s3/results":  # ?prefix=results|incoming: the photos in the AWS bucket, newest first
+            prefix = parse_qs(url.query).get("prefix", ["results"])[0]
+            if prefix not in ("results", "incoming"):
+                return self._json(404, {"error": "unknown prefix"})
+            pages = s3_client().get_paginator("list_objects_v2").paginate(Bucket=s3_bucket(), Prefix=f"{prefix}/")
+            objects = sorted((o for page in pages for o in page.get("Contents", []) if o["Key"].endswith(".jpg")), key=lambda o: o["LastModified"], reverse=True)
+            keys = [o["Key"] for o in objects]
+            return self._json(200, {"bucket": s3_bucket(), "keys": keys})
+        if url.path == "/api/pi/result":  # ?job=<id>: 202 until results/<id>_result.jpg is in the bucket, then its key + narration
+            job = parse_qs(url.query).get("job", [""])[0]
+            key = f"results/{job}_result.jpg"
+            if not s3_has(key):
+                return self._json(202, {"pending": True})
+            reply = {"photo": key, "narration": None, "message": None}
+            try:  # results/<id>_result.json (uploaded before the jpg) holds what the model found: status, target, matches
+                found = json.loads(s3_client().get_object(Bucket=s3_bucket(), Key=f"results/{job}_result.json")["Body"].read())
+                reply.update(narration=narration_for(found), message=found.get("message"))
+            except (s3_client().exceptions.ClientError, ValueError, KeyError):
+                pass  # no findings file: the popup shows the picture without a spoken line
+            return self._json(200, reply)
+        if url.path == "/api/s3/image":
+            key = parse_qs(url.query).get("key", [""])[0]
+            if not key.startswith(("results/", "incoming/")):  # only the photo prefixes are served
+                return self._json(404, {"error": "image not found"})
+            return self._send(200, s3_client().get_object(Bucket=s3_bucket(), Key=key)["Body"].read(), "image/jpeg")
         if url.path == "/api/own/list":
             return self._json(200, own_listing())
         if url.path == "/api/own/image":
@@ -386,6 +466,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = find(self._body(), query.get("text", [""])[0])
                 result["narration"] = None if query.get("quick") else narration_for(result)  # None -> the UI shows the plain "message"; quick=1 skips Gemini
                 self._json(200, result)
+            elif url.path == "/api/pi/find":  # ?text = what the user said; asks the Pi for a photo, then runs find() on it
+                query = parse_qs(url.query)
+                self._json(200, pi_find(query.get("text", [""])[0]))
             elif url.path == "/api/model":  # body = {"name": one of the names from GET /api/models}
                 global WEIGHTS
                 name = json.loads(self._body())["name"]
@@ -401,6 +484,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"narration": narration_for({"status": "trouble", "target": None, "matches": [], "problem": problem})})
             else:
                 self._json(404, {"error": "not found"})
+        except TimeoutError:  # the Pi did not answer in time
+            self._json(504, {"error": "the Pi did not answer in time"})
         except FileNotFoundError as error:  # no trained weights yet
             self._json(503, {"error": str(error)})
         except SystemExit as error:  # transcribe/synthesize exit with the upstream error message
@@ -416,7 +501,6 @@ def main() -> None:
     load_env()
     if not os.environ.get("ELEVENLABS_API_KEY"):
         sys.exit("ELEVENLABS_API_KEY is not set. Put it in .env (see .env.example).")
-    threading.Thread(target=warm_up, daemon=True).start()
     print(f"Dev UI on http://localhost:{PORT}  (Ctrl+C to stop)")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 

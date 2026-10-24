@@ -2,7 +2,7 @@
 
     python dev-test/narrator.py        # runs four sample results through Gemini
 
-Gemini never picks the item or reads the photo; it only phrases a result the vision system already produced.
+Gemini picks which item(s) the user asked for from what they said (pick_targets) and phrases the final reply. It never reads the photo.
 Reads GEMINI_API_KEY (and optional GEMINI_MODEL) from .env or the environment. Needs: pip install requests
 """
 import json
@@ -71,6 +71,25 @@ def narrate(result: dict, api_key: str, model: str = MODEL) -> str:
         sys.exit(f"Gemini returned {response.status_code}: {response.text[:300]}")
     parts = response.json()["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts).strip()
+
+
+def pick_targets(transcript: str, known: list[str], api_key: str, model: str = MODEL) -> dict:
+    """Which of the known items did the user ask for? Returns {"targets": [known names], "unsupported": spoken name or None}."""
+    prompt = (f"Items we can find: {json.dumps(known)}. The user said: {json.dumps(transcript)}. "
+              'Reply with JSON only: {"targets": [items from the list the user asked for, exactly as spelled there], '
+              '"unsupported": "an item they asked for that is not in the list, else null"}.')
+    response = requests.post(
+        URL.format(model=model),
+        headers={"x-goog-api-key": api_key},
+        json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+              "generationConfig": {"temperature": 0, "maxOutputTokens": 200, "responseMimeType": "application/json"}},
+        timeout=30,
+    )
+    if not response.ok:
+        sys.exit(f"Gemini returned {response.status_code}: {response.text[:300]}")
+    parts = response.json()["candidates"][0]["content"]["parts"]
+    picked = json.loads("".join(p.get("text", "") for p in parts))
+    return {"targets": [t for t in picked.get("targets", []) if t in known], "unsupported": picked.get("unsupported")}
 
 
 SAMPLES = [

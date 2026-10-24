@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { readJson } from "./api";
-import { Box, Overlay } from "./Results";
+import { Box } from "./Results";
 import StatusLine, { Status } from "./Status";
 
 type Found = {
@@ -24,50 +24,18 @@ export default function Mic() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [result, setResult] = useState<Found | null>(null);
   const [says, setSays] = useState("");
+  const [job, setJob] = useState<string | null>(null); // the current Pi job, so Refresh can ask for its result again
   const recorder = useRef<MediaRecorder | null>(null);
-  const video = useRef<HTMLVideoElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const voice = useRef<HTMLAudioElement | null>(null); // Sherlock's reply while it plays
   const round = useRef(0); // bumped on every Start, so a reply still being fetched for the last round is dropped
   const [modalOpen, setModalOpen] = useState(false);
-  const others = result ? result.detections.filter((d) => !result.matches.includes(d)) : [];
-  const [models, setModels] = useState<{ name: string; mb: number }[]>([]);
-  const [selected, setSelected] = useState("");
-
-  // The weights files on the desktop, smallest first. Picking one switches the model the next photo is checked with.
-  useEffect(() => {
-    fetch("/api/models").then((r) => r.json()).then((m) => { setModels(m.models); setSelected(m.selected); }).catch(() => {});
-  }, []);
-
-  async function pickModel(name: string) {
-    setSelected(name);
-    await fetch("/api/model", { method: "POST", body: JSON.stringify({ name }) }).catch(() => {});
-  }
-
   useEffect(() => {
     const d = dialog.current;
     if (!d) return;
     if (modalOpen && !d.open) d.showModal();
     if (!modalOpen && d.open) d.close();
   }, [modalOpen]);
-
-  // The camera is on as soon as this page opens (and shown live), so it is warm and ready when you speak.
-  useEffect(() => {
-    let stream: MediaStream | undefined;
-    let cancelled = false;
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((s) => {
-        stream = s;
-        if (cancelled) return s.getTracks().forEach((t) => t.stop());
-        if (video.current) video.current.srcObject = s;
-      })
-      .catch(() => {}); // no camera or permission denied: finish() reports it when there is no photo
-    return () => {
-      cancelled = true;
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
 
   // Show the reply and read it aloud with ElevenLabs. If speech fails the text is still on the page.
   async function say(text: string) {
@@ -112,6 +80,7 @@ export default function Mic() {
       setPhotoUrl(null);
       setResult(null);
       setSays("");
+      setJob(null);
       setStatus({ text: "Listening... click Stop when you are done." });
       rec.addEventListener("stop", () => void finish(new Blob(chunks, { type: rec.mimeType })), { once: true });
     } catch (err) {
@@ -119,37 +88,48 @@ export default function Mic() {
     }
   }
 
-  // Grab one frame from the live camera. The camera stays on.
-  function takePhoto(): Promise<Blob | null> {
-    const el = video.current;
-    if (!el || !el.videoWidth) return Promise.resolve(null);
-    const canvas = document.createElement("canvas");
-    canvas.width = el.videoWidth;
-    canvas.height = el.videoHeight;
-    canvas.getContext("2d")!.drawImage(el, 0, 0);
-    return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  // Poll until results/<job>_result.jpg is in the bucket. Refresh in the popup polls again.
+  async function waitForResult(job: string) {
+    const mine = round.current;
+    setStatus({ text: "Photo received. Waiting for the result..." });
+    try {
+      for (let tries = 0; tries < 90 && mine === round.current; tries++) {
+        const poll = await fetch(`/api/pi/result?job=${job}`);
+        if (poll.status === 202) { await new Promise((r) => setTimeout(r, 1000)); continue; }
+        if (!poll.ok) return trouble("the result could not be read from the bucket");
+        const found = await readJson<{ photo: string; narration: string | null; message: string | null }>(poll);
+        setPhotoUrl(`/api/s3/image?key=${encodeURIComponent(found.photo)}`);
+        setStatus({ text: "Result received." });
+        const line = found.narration ?? found.message;
+        return line ? await say(line) : undefined;
+      }
+    } catch {
+      setStatus({ text: "Could not reach the API server (is dev-test/server.py running?)", error: true });
+    }
+    if (mine === round.current) setStatus({ text: "The result did not arrive yet. Click Refresh to check the bucket again.", error: true });
   }
 
+  // The Pi takes the photo: the server drops a job in S3, waits for the Pi's upload, then the popup waits for results/<job>_result.jpg.
   async function finish(clip: Blob) {
-    const photo = await takePhoto();
-    if (photo) {
-      setPhotoUrl(URL.createObjectURL(photo)); // pop the results up at once, before transcribing
-      setModalOpen(true);
-    }
+    setModalOpen(true);
     if (clip.size === 0) return trouble("no audio was captured from the microphone");
-    if (!photo) return trouble("no camera is available, so no photo could be taken");
     setClipUrl(URL.createObjectURL(clip));
     try {
       setStatus({ text: "Transcribing..." });
       const stt = await readJson(await fetch("/api/stt", { method: "POST", body: clip }));
       if (stt.error) return trouble("the speech could not be transcribed");
-      setStatus({ text: `Heard "${stt.text}". Looking in the photo...` });
-      const res = await fetch(`/api/find?text=${encodeURIComponent(stt.text)}`, { method: "POST", body: photo });
-      const found = await readJson<Found>(res);
-      if (!res.ok) return trouble("the item-finding model is not available yet");
-      setResult(found);
-      setStatus({ text: `Heard "${found.transcript}"` });
-      await say(found.narration ?? found.message);
+      setStatus({ text: `Heard "${stt.text}". Asking the Pi for a photo...` });
+      const res = await fetch(`/api/pi/find?text=${encodeURIComponent(stt.text)}`, { method: "POST" });
+      const sent = await readJson<{ job: string | null; photo: string | null; narration?: string | null; message?: string }>(res);
+      if (!res.ok) return trouble(res.status === 504 ? "the camera on the Pi did not answer" : "the item-finding model is not available yet");
+      if (!sent.job || !sent.photo) { // nothing to look for: Sherlock answers, no photo
+        setStatus({ text: `Heard "${stt.text}"` });
+        return await say(sent.narration ?? sent.message ?? "");
+      }
+      setPhotoUrl(`/api/s3/image?key=${encodeURIComponent(sent.photo)}`); // the Pi's photo now; results/<job>_result.jpg replaces it
+      setResult(null);
+      setJob(sent.job);
+      await waitForResult(sent.job);
     } catch {
       setStatus({ text: "Could not reach the API server (is dev-test/server.py running?)", error: true });
     }
@@ -169,15 +149,6 @@ export default function Mic() {
       <h2>Speak to the mic</h2>
       <div className="speak">
         <div>
-          <video ref={video} autoPlay muted playsInline />
-        </div>
-        <div>
-          <label style={{ display: "block", marginBottom: "0.5rem" }}>
-            Model{" "}
-            <select value={selected} onChange={(e) => void pickModel(e.target.value)}>
-              {models.map((m) => <option key={m.name} value={m.name}>{m.name} ({m.mb} MB)</option>)}
-            </select>
-          </label>
           <button onClick={toggle} style={{ width: "100%", padding: "0.8rem" }}>{recording ? "Stop" : "Start"}</button>
           {clipUrl && (
             <p>
@@ -189,18 +160,17 @@ export default function Mic() {
           {says && <p><b>{says}</b></p>}
         </div>
       </div>
-      {/* Results popup: the snapshot with a box where the item is. The camera behind it keeps running. */}
+      {/* Results popup: results/<id>_result.jpg, the snapshot with the boxes already drawn by the server. */}
       <dialog ref={dialog} onClose={() => setModalOpen(false)} onClick={(e) => e.target === dialog.current && setModalOpen(false)}>
         <h2>Result</h2>
         {photoUrl && (
           <div style={{ position: "relative" }}>
             <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
-            {result && <Overlay boxes={others} color="#777" dashed />}
-            {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
           </div>
         )}
         <StatusLine status={status} />
         {says && <p><b>{says}</b></p>}
+        {job && <button onClick={() => void waitForResult(job)}>Refresh</button>}{" "}
         <button onClick={() => setModalOpen(false)}>Close</button>
       </dialog>
     </section>
