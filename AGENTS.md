@@ -26,8 +26,8 @@ We use [OpenSpec](https://github.com/Fission-AI/OpenSpec). Specs live in `opensp
 
 ```
 web/       Next.js (TypeScript) -> Vercel
-desktop/   Python FastAPI service: STT, Gemini, YOLO, DB, storage, TTS
-pi/        Python service on the Raspberry Pi: /capture, mic
+desktop/   Python FastAPI service: STT, YOLO, DB, storage, Gemini narrator, TTS
+pi/        Python service on the Raspberry Pi: camera + job relay (no mic on the Pi)
 docs/      PRD, architecture, tech stack
 ```
 
@@ -36,11 +36,16 @@ Directories are created as milestones land (see PRD roadmap). Check the filesyst
 ## Hard constraints
 
 - Vercel runs only the web app. No YOLO, no long jobs, no inbound calls to the desktop or Pi.
-- The desktop pushes to the web API over HTTPS. The web app never calls the desktop.
+- The desktop writes results directly to Postgres and object storage. The web app never calls the desktop or the Pi.
+- The browser owns the mic and speaker. The Pi takes photos and relays each request to the desktop. The Pi polls the web API for jobs (outbound only).
 - Never commit secrets. Add new env var names to `.env.example` and `docs/TECH_STACK.md`.
 - Snapshots are private. Serve them with signed URLs only.
 - Storage code uses the S3 API only, so the backend (R2, Supabase, SeaweedFS) stays swappable.
 - Stock YOLO (COCO) cannot detect keys or wallets. Keep matching logic behind one module so the strategy can change.
+
+## Theme
+
+Steampunk everywhere: web UI (brass, copper, aged paper, gears, gauges, Victorian type) and the Gemini narrator voice. Keep text contrast accessible. See `docs/PRD.md`.
 
 ## Conventions
 
@@ -51,15 +56,28 @@ Directories are created as milestones land (see PRD roadmap). Check the filesyst
 - Keep changes small. One milestone step per PR.
 - When you change behavior, API shape, or schema, update the matching file in `docs/` in the same commit.
 
+## Testing the website
+
+- Use Playwright for all website tests (`web/`). Put E2E tests in `web/e2e/`, run with `pnpm exec playwright test`.
+- Mock external services (Gemini, ElevenLabs, Postgres, storage) in tests. Never call paid APIs from CI.
+- Agents with the Playwright MCP may also use it to check pages by hand, but a UI change is not done until a Playwright test covers it.
+- Python services (`desktop/`, `pi/`) use pytest.
+
 ## Definition of done
 
 - Code runs locally from the README instructions for that component.
 - At least one test or a documented manual check for new non-trivial logic (matching, parsing, DB queries).
+- Any change to the website has a passing Playwright test.
 - Docs updated if contracts changed.
 
 ## Open decisions (ask the user before assuming)
 
 - Managed Postgres + R2 vs self-hosted SeaweedFS.
-- YOLO-World vs fine-tuned YOLO vs Gemini vision fallback.
+- Which item classes to train first, and where training runs (local GPU vs cloud).
+- How the target is pulled from the transcript before it reaches YOLO (strip filler words and match against the trained class list).
+
+The YOLO model is custom-trained (fine-tuned) on our item classes. See `docs/TRAINING.md`. Weights are not committed to git.
+
+Gemini is only the narrator: a witty steampunk persona that words the final reply. It does not parse requests or detect items.
 - On-demand capture only vs periodic background snapshots.
-- Which mic (Pi or desktop).
+- Job hand-off: Pi polling `/api/jobs/next` (default) vs exposing the Pi through a tunnel.

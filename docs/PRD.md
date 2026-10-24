@@ -38,16 +38,20 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 
 | ID | Requirement |
 | --- | --- |
-| F1 | Capture audio from a mic on the Pi (or the desktop) and transcribe it. |
-| F2 | Extract the target item name from the transcript with Gemini. Normalize to a canonical item name. |
+| F1 | Record audio from the user's microphone in the browser (the Pi has no mic), send it as a job, and transcribe it on the desktop. |
+| F2 | Identify the target item from the transcript via the vision model (no LLM). Normalize to a canonical item name. |
 | F3 | Pi captures a photo on command and transmits it to the desktop. |
 | F4 | Desktop runs object detection on the photo and returns all detections (label, confidence, bbox). |
 | F5 | Match the target to detections. Support items outside the base YOLO classes (see Risks). |
 | F6 | Store the snapshot in object storage and a sighting row in Postgres, for every capture. |
 | F7 | Mark an item "lost" when a request finds no match. Increment its lost count. |
-| F8 | Generate a short spoken reply (Gemini text, ElevenLabs TTS) with location in the frame and last-seen time. |
+| F8 | Generate a short spoken reply (Gemini as a witty steampunk narrator, ElevenLabs TTS) with location in the frame and last-seen time. |
 | F9 | Web UI lists items, last-seen snapshot with bbox overlay, history, and lost count. |
 | F10 | Web UI hosted on Vercel at a custom GoDaddy domain. |
+
+## Theme
+
+Steampunk. Brass, copper, aged paper, gears, gauges, Victorian type. It applies to the web UI and to the narrator voice (Gemini replies in a witty steampunk persona). UI work must follow this theme and still meet accessibility contrast.
 
 ## Non-functional requirements
 
@@ -64,17 +68,18 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 
 ## Risks and open questions
 
-- **COCO has no keys, wallet, or earbuds.** Stock YOLO cannot find them. Options: YOLO-World (open-vocabulary), fine-tune on our items, or fall back to Gemini vision. Decision pending; default plan is YOLO-World with Gemini vision fallback.
+- **COCO has no keys, wallet, or earbuds.** Stock YOLO cannot find them. Decision: we train (fine-tune) YOLO on our own labeled images of the target items. Plan in `docs/TRAINING.md`. Only trained classes can be found, so the class list defines what Ctrl-F supports.
 - **Vercel cannot reach the desktop or Pi.** The desktop must push results to the web API (outbound HTTPS). Do not expose the desktop to the internet.
 - **Storage choice.** Managed (Cloudflare R2 or Supabase Storage + Neon/Supabase Postgres) vs self-hosted SeaweedFS. Default: managed. SeaweedFS needs a VPS.
 - **Trigger mode.** On-demand capture only (v1) vs periodic background snapshots (builds history without asking). Periodic snapshots make "last seen" much more useful; decide after v1 works.
-- **Where audio is captured.** Pi mic vs desktop mic. Pick whichever hardware is available.
+- **Audio.** Decided: the website records the mic and plays the reply, since the Pi has no mic. Wake word is out of scope; the UI uses push-to-talk.
+- **Pi as relay.** The Pi claims jobs by polling the web API (outbound) and forwards photos to the desktop on the LAN. Open: Pi and desktop must share a network (or use Tailscale).
 
 ## Roadmap
 
 1. M0: Docs and repo scaffold (this).
 2. M1: Pi capture -> desktop receive -> YOLO detect -> print result (no voice, no web).
-3. M2: Voice in (STT + Gemini parse) and voice out (TTS).
+3. M2: Voice in (STT, target to YOLO) and voice out (Gemini narrator + TTS).
 4. M3: Postgres + storage, sighting history, lost counts.
 5. M4: Next.js UI, deploy to Vercel, GoDaddy domain.
 6. M5: Periodic snapshots, open-vocabulary detection tuning, polish.

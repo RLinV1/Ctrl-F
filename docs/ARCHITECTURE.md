@@ -1,51 +1,62 @@
 # Architecture
 
-## Components
+## Summary
+
+The website is the voice interface: the browser records the user's microphone and plays the reply. The Raspberry Pi takes photos and relays each request to the desktop. The desktop runs the models. Vercel never calls the Pi or the desktop.
 
 ```
- [User voice]
-      |
-      v
- [Raspberry Pi]  mic + camera
-      |  audio / JPEG over LAN (HTTP)
-      v
- [Desktop service, Python]  STT -> Gemini parse -> YOLO -> match -> Gemini reply -> TTS
-      |                         |
-      | HTTPS (secret)          | SQL + S3 API
-      v                         v
- [Next.js on Vercel] <------ [Postgres + object storage]
-      |
-      v
- [Web UI: items, snapshots, history]
+ Browser (user)        Vercel + Cloud                      Pi (edge)              Desktop (brain)
+ --------------        --------------                      ---------              ---------------
+ mic -> audio  ---->   /api/jobs  -> jobs row + R2 audio
+                                          ^   |
+                                          |   +-- Pi polls /api/jobs/next (outbound HTTPS)
+                                          |                 camera -> JPEG
+                                          |                 POST photo + job_id --LAN--> /process
+                                          |                                              STT (ElevenLabs)
+                                          |                                              target, YOLO, match, memory
+                                          |                                              Gemini steampunk narrator
+                                          +---- writes sightings, reply, audio <-------- TTS (ElevenLabs)
+ speaker <---- polls /api/jobs/:id -> reply text + signed audio URL
 ```
 
-The desktop is the orchestrator. The web app is a viewer plus a thin API. Vercel never calls the desktop.
+## Design rules
+
+- **Browser owns audio I/O.** It records with `MediaRecorder` and plays the reply audio. The Pi has no microphone.
+- **Pi is the camera and the relay.** It claims a job, captures a photo, and forwards photo + job id to the desktop on the LAN. It runs no models.
+- **Desktop owns all intelligence.** STT, target extraction, YOLO, matching, memory, narrator, TTS. It writes results to Postgres and R2 directly.
+- **Vercel never calls the Pi or desktop.** The Pi and desktop make outbound calls only. The job table in Postgres is the hand-off between the web and the Pi.
+- **One job = one voice request.** Status moves `pending -> claimed -> done | failed`.
+- **Storage uses the S3 API only**, so R2 can be swapped for SeaweedFS.
+- **Memory is plain SQL.** Last seen = newest `sightings` row. Lost count = `items.lost_count`. No vector DB.
+- **Periodic scans** (optional, M5) are a desktop scheduler calling the same detect-and-store function.
+- **Network:** Pi and desktop share a LAN. If not, use Tailscale. Do not open inbound ports.
 
 ## Request flow (voice query)
 
-1. Audio is captured (Pi or desktop mic) and sent to the desktop.
-2. Desktop calls ElevenLabs STT, then Gemini to extract `{ "target": "<canonical item name>" }`.
-3. Desktop calls `GET {PI_BASE_URL}/capture` and receives a JPEG.
-4. Desktop runs detection on the JPEG. Output: list of `{ label, confidence, bbox }`.
-5. Desktop matches `target` to detections (exact label, synonym, or open-vocabulary prompt). If nothing matches and the vision fallback is on, ask Gemini vision.
-6. Desktop uploads the JPEG to storage and inserts a `sightings` row (always, for every capture). Matched detections are linked to the item.
-7. If the target was not found, the desktop looks up the last sighting for that item and increments `items.lost_count`.
-8. Gemini writes a one or two sentence reply from the structured result. ElevenLabs TTS speaks it.
-9. Desktop POSTs a summary to the web API so the UI refreshes (or the UI reads Postgres directly).
+1. User holds push-to-talk on the website. Browser records audio.
+2. Browser uploads the clip to R2 (presigned URL) and calls `POST /api/jobs`, which creates a `jobs` row with `status = pending`.
+3. Pi polls `GET /api/jobs/next` with its bearer token. It receives one job and marks it `claimed`.
+4. Pi captures a JPEG and sends it with the job id to the desktop: `POST {DESKTOP_BASE_URL}/process`.
+5. Desktop downloads the audio, calls ElevenLabs STT, and reduces the transcript to a target item name by matching it against the trained class list. No LLM.
+6. Desktop runs the custom-trained YOLO model on the JPEG and matches the target to detections.
+7. Desktop stores the JPEG and inserts `snapshots` and `sightings` rows. If the target was not found, it looks up the last sighting and increments `items.lost_count`.
+8. Gemini, as a witty steampunk narrator, writes a one or two sentence reply. ElevenLabs TTS turns it into audio stored in R2.
+9. Desktop updates the job: `status = done`, `reply_text`, `reply_audio_key`.
+10. Browser polls `GET /api/jobs/:id`, shows the reply, and plays the audio from a signed URL.
 
 ## Data model (Postgres)
 
 ```
 items
   id            uuid pk
-  name          text unique        -- canonical, lowercase ("keys")
-  aliases       text[]             -- synonyms ("key", "car keys")
+  name          text unique        -- canonical, lowercase ("keys"), matches a trained class
+  aliases       text[]
   lost_count    int default 0
   created_at    timestamptz
 
 snapshots
   id            uuid pk
-  storage_key   text               -- object key in the bucket
+  storage_key   text
   captured_at   timestamptz
   width, height int
 
@@ -53,7 +64,7 @@ sightings
   id            uuid pk
   item_id       uuid fk items
   snapshot_id   uuid fk snapshots
-  label         text               -- raw detector label
+  label         text
   confidence    real
   bbox          jsonb              -- {x, y, w, h} normalized 0..1
   seen_at       timestamptz
@@ -64,47 +75,68 @@ queries
   target        text
   item_id       uuid fk items null
   found         boolean
+  reply_text    text
   asked_at      timestamptz
+
+jobs
+  id               uuid pk
+  status           text            -- pending | claimed | done | failed
+  audio_key        text            -- user's recording in R2
+  query_id         uuid fk queries null
+  reply_audio_key  text null
+  error            text null
+  created_at, claimed_at, finished_at  timestamptz
 ```
 
-Derived values (do not store):
-- Last seen of an item = newest `sightings` row for it.
-- Lost frequency = `items.lost_count`, or count of `queries` with `found = false`.
+Derived values (do not store): last seen of an item, and lost frequency (count of `queries` with `found = false`).
 
-## API contracts
+## Interfaces
 
 ### Pi service
 
-| Method | Path | Returns |
+| Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/capture` | `image/jpeg` of the current frame |
+| GET | `/capture` | `image/jpeg` of the current frame (debug and M1) |
 | GET | `/health` | `{ "ok": true }` |
+| (loop) | outbound | Polls `GET {WEB_BASE_URL}/api/jobs/next`, captures, forwards to desktop |
 
 ### Desktop service
 
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
-| POST | `/query` | audio file, or `{ "text": "find my keys" }` | `{ target, found, bbox?, snapshot_url, last_seen?, reply_text, reply_audio_url }` |
-| POST | `/scan` | none | Captures, detects, stores all detections (periodic mode) |
-| GET | `/health` | none | `{ "ok": true, "gpu": bool }` |
+| POST | `/detect` | JPEG upload | `{ detections: [{ label, confidence, bbox }] }` (M1) |
+| POST | `/process` | JPEG + `job_id` | `202`; the job row carries the result |
+| POST | `/scan` | none | Capture-free detect and store for periodic mode (M5) |
+| GET | `/health` | none | `{ "ok": true, "gpu": bool, "model_version": "..." }` |
 
-### Web API (Next.js route handlers)
+### Web (Next.js)
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| POST | `/api/ingest` | `Authorization: Bearer $DESKTOP_TO_WEB_SECRET` | Desktop pushes a query result |
-| GET | `/api/items` | none (v1) | List items with last seen and lost count |
-| GET | `/api/items/:id/sightings` | none (v1) | Sighting history with signed snapshot URLs |
+| POST | `/api/jobs` | UI login | Create a job, return presigned audio upload URL |
+| GET | `/api/jobs/next` | Pi bearer token | Pi claims the oldest pending job |
+| GET | `/api/jobs/:id` | UI login | Status, reply text, signed reply-audio URL |
+| GET | `/api/items` | UI login | Items with last seen and lost count |
+| GET | `/api/items/:id/sightings` | UI login | History with signed snapshot URLs |
 
-These are proposals. Change them freely while building, and update this file in the same commit.
+These are proposals. Change them while building, and update this file in the same commit.
 
-## Detection note
+## Model
 
-Stock YOLO uses the COCO classes. Common lost items (keys, wallet, earbuds) are not COCO classes. Use YOLO-World with the target as the text prompt, fine-tune, or use the Gemini vision fallback. Matching logic lives in one module in `desktop/` so the strategy can change without touching callers.
+- Custom-trained YOLO, see `docs/TRAINING.md`. Only trained classes can be found.
+- Weights live in object storage under `models/<version>/best.pt`. `YOLO_WEIGHTS_PATH` selects the version.
+- Matching logic lives in one module in `desktop/`.
 
 ## Security
 
-- Snapshots are private. The UI uses short-lived signed URLs.
-- `/api/ingest` requires the shared secret.
-- No credentials in the repo. See `docs/TECH_STACK.md` for env var names.
+- Snapshots and audio are private (photos and voice from a home). The UI needs a single-user login. All media uses short-lived signed URLs.
+- The Pi token can only claim jobs. The desktop has its own read-write database role. Vercel's role can write `jobs` and read everything else.
+- No credentials in the repo. Env var names are in `docs/TECH_STACK.md`.
 - The desktop and Pi are not exposed to the public internet.
+
+## Failure behavior
+
+- Pi offline: the job stays `pending`; the UI shows "camera offline" after a timeout and the last seen sighting.
+- Desktop offline: the Pi marks the job `failed` after a timeout; the UI still shows history.
+- Untrained item requested: the narrator says it cannot look for that yet.
+- STT or TTS fails: the job completes with `reply_text` only.
