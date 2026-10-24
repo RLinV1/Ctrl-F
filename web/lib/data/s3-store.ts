@@ -168,18 +168,16 @@ export class S3Store implements Store {
       targets,
       unsupported,
     };
-    console.log(`[job] ${rec.id} said ${JSON.stringify(transcript)} -> targets ${JSON.stringify(targets)}${targets.length ? ", writing jobs/" : ", no job written (nothing to photograph)"}`);
-    if (targets.length) {
-      // The job goes to the bucket for the Pi to poll; no items named means no photo is needed, and getJob answers it.
-      await this.client.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: `jobs/${rec.id}.json`,
-          Body: JSON.stringify({ text: transcript, targets }),
-          ContentType: "application/json",
-        }),
-      );
-    }
+    console.log(`[job] ${rec.id} said ${JSON.stringify(transcript)} -> targets ${JSON.stringify(targets)}, writing jobs/`);
+    // Every request goes to the bucket for the Pi to poll, even one that names no item: the photo still comes back.
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: `jobs/${rec.id}.json`,
+        Body: JSON.stringify({ text: transcript, targets }),
+        ContentType: "application/json",
+      }),
+    );
     this.jobs.set(rec.id, rec);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
@@ -194,8 +192,7 @@ export class S3Store implements Store {
     if (!rec) return null;
     if (rec.status === "pending" || rec.status === "claimed") {
       // The jpg lands after the json, so both present means the processing server is done.
-      // No targets means no photo is coming.
-      if (!rec.targets.length || (await this.hasResult(id))) rec = await this.finish(rec);
+      if (await this.hasResult(id)) rec = await this.finish(rec);
       else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed" });
     }
     return this.view(rec);
@@ -228,9 +225,9 @@ export class S3Store implements Store {
   }
 
   private async narrateJob(rec: JobRec): Promise<JobRec> {
-    const result: Result = rec.targets.length
-      ? ((await this.getJson<Result>(resultKey(rec.id))) as Result)
-      : { status: rec.unsupported ? "unsupported" : "no_target", target: rec.unsupported, matches: [], detections: [] };
+    let result = (await this.getJson<Result>(resultKey(rec.id))) as Result;
+    // The processing server only knows the classes it was trained on; an item we cannot seek arrives as "no_target".
+    if (result.status === "no_target" && rec.unsupported) result = { ...result, status: "unsupported", target: rec.unsupported };
     const now = new Date().toISOString();
 
     // Last seen: the newest earlier result with this item in it.
@@ -261,7 +258,7 @@ export class S3Store implements Store {
       found: result.status === "found",
       replyText: text,
       replyTimings: timings,
-      photo: rec.targets.length ? { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height } : null,
+      photo: { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
       match,
       lastSighting: match ? null : (earlier ?? null),
     };
