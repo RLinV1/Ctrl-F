@@ -140,3 +140,14 @@ These are proposals. Change them while building, and update this file in the sam
 - Desktop offline: the Pi marks the job `failed` after a timeout; the UI still shows history.
 - Untrained item requested: the narrator says it cannot look for that yet.
 - STT or TTS fails: the job completes with `reply_text` only.
+
+## Dev pipeline (branch `dev`, S3 only)
+
+Postgres is skipped. One bucket holds jobs, photos, results and memory; the web server does STT, narration and TTS.
+
+1. Browser records, `PUT /api/uploads/audio` stores `audio/<uuid>.<ext>`, `POST /api/jobs` runs ElevenLabs STT and Gemini item picking, writes `jobs/<id>.json` and a `queue/<id>` marker.
+2. `pi/agent.py` polls `GET /api/jobs/next` (bearer `PI_JOB_TOKEN`), gets `{id, targets}`, and `pi/capture.py` uploads `incoming/<id>.json` then `incoming/<id>.jpg`.
+3. `desktop/server.py` runs YOLO and writes `results/<id>_result.json` then `results/<id>_result.jpg`, and touches `heartbeat/desktop`.
+4. `GET /api/jobs/<id>` sees the result jpg, has Gemini word the reply from the result JSON, has ElevenLabs speak it (`replies/<id>.mp3`, word timings), updates `memory.json` (sightings, lost counts) and marks the job done.
+
+A request that names no known item skips the Pi and is answered from step 4 directly.

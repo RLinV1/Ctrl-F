@@ -27,12 +27,29 @@ export async function postUpload(store: Store, request: Request) {
   return json(await store.createUploadSlot(contentType), 201);
 }
 
+/** The upload slot's PUT target: the recording goes through the server, so the bucket needs no CORS rules. */
+export async function putAudio(store: Store, request: Request) {
+  const key = new URL(request.url).searchParams.get("key") ?? "";
+  const body = await request.arrayBuffer();
+  if (body.byteLength === 0) return error("empty upload", 400);
+  try {
+    await store.storeAudio(key, body, request.headers.get("content-type") ?? "audio/webm");
+  } catch {
+    return error("bad key", 400);
+  }
+  return new Response(null, { status: 200 });
+}
+
 export async function postJob(store: Store, request: Request) {
   const body = await readJson(request);
   const audioKey = typeof body?.audioKey === "string" ? body.audioKey : "";
   if (!audioKey.startsWith("audio/")) return error("audioKey is required", 400);
   if (!(await store.audioExists(audioKey))) return error("no audio stored at audioKey", 400);
-  return json(await store.createJob(audioKey), 201);
+  try {
+    return json(await store.createJob(audioKey), 201);
+  } catch (e) {
+    return error((e as Error).message, 502);
+  }
 }
 
 function tokenMatches(header: string | null, expected: string | undefined) {
@@ -45,8 +62,8 @@ function tokenMatches(header: string | null, expected: string | undefined) {
 export async function getNextJob(store: Store, request: Request, piToken: string | undefined) {
   if (!tokenMatches(request.headers.get("authorization"), piToken)) return error("unauthorized", 401);
   await store.touchDevice("pi");
-  const id = await store.claimNextJob();
-  return id ? json({ id }) : new Response(null, { status: 204 });
+  const claim = await store.claimNextJob();
+  return claim ? json(claim) : new Response(null, { status: 204 });
 }
 
 export async function getJob(store: Store, id: string) {
