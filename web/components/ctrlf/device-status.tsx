@@ -9,19 +9,18 @@ import { Gauge } from "./gauge";
 /*
  * Status area. Built from the header pattern of Kokonut's uptime-card (title, one
  * summary line, a row per service) without its day bars: Ctrl-F stores only each
- * device's latest activity. Polls /api/status every 10 s; status is always in words.
+ * device's latest activity. Fetches /api/status once per page load; status is always in words.
  */
 
 const NAMES = { pi: "Camera", desktop: "Desktop" } as const;
 const WINDOWS = { pi: 15_000, desktop: 60_000 } as const;
-export const STATUS_POLL_MS = 10_000;
 
 function line(s: DeviceStatus) {
   if (s.online) return "online";
   return s.lastSeenAt ? `offline since ${clockTime(s.lastSeenAt)}` : "not seen yet";
 }
 
-/** Device status and the time it was fetched, refreshed every STATUS_POLL_MS. */
+/** Device status and the time it was fetched. Fetched once when the page loads; it is not polled. */
 export function useDeviceStatusAt() {
   const [state, setState] = useState<{ status: DeviceStatus[]; at: number } | null>(null);
   useEffect(() => {
@@ -31,14 +30,12 @@ export function useDeviceStatusAt() {
         const res = await fetch("/api/status", { cache: "no-store" });
         if (res.ok && alive) setState({ status: await res.json(), at: Date.now() });
       } catch {
-        // Keep the last known status; the next poll tries again.
+        // Leave the status empty; it is fetched again on the next page load.
       }
     };
     load();
-    const id = window.setInterval(load, STATUS_POLL_MS);
     return () => {
       alive = false;
-      window.clearInterval(id);
     };
   }, []);
   return state;

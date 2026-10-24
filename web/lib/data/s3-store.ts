@@ -5,7 +5,7 @@ import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
-import type { Box, DeviceStatus, Item, JobView, Photo, Sighting, WordTime } from "./types";
+import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
 
 /*
  * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
@@ -392,24 +392,6 @@ export class S3Store implements Store {
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,
       error: rec.error ?? null,
     };
-  }
-
-  async listPhotos(): Promise<Photo[]> {
-    return (await this.list("incoming/"))
-      .filter((o) => o.key.endsWith(".jpg"))
-      .sort((a, b) => +b.at - +a.at)
-      .map((o) => ({ id: o.key.slice("incoming/".length, -".jpg".length), takenAt: o.at.toISOString(), bytes: o.size }));
-  }
-
-  async getPhoto(id: string) {
-    if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null; // an id, never a path
-    try {
-      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: `incoming/${id}.jpg` }));
-      return (await res.Body?.transformToByteArray()) ?? null;
-    } catch (error) {
-      if (isMissing(error)) return null;
-      throw error;
-    }
   }
 
   /** This session's questions, then older results from the bucket (those have no question or reply text). */
