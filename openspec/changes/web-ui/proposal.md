@@ -17,6 +17,7 @@ Ctrl-F has detection work in progress (`feat/dev-test`, `feat/backend-foundation
 - Visual design follows the steampunk brand (fixed palette and type, gears and gauges only where they carry meaning) and the TasteSkill app-screen rules everywhere else.
 - Build the UI on Tailwind v4 and shadcn/ui, with selected Kokonut UI components (installed from its shadcn registry and restyled to the brand), and anime.js v4 for every animation we write ourselves.
 - The narrator reply highlights each word as the reply audio speaks it, when word timings are available.
+- The Ask box offers three ways to ask, chosen with Kokonut's `morphic-navbar` as a switch: speak into this computer's mic, type the question, or press a button on the camera and speak into the camera's mic. **This reverses the PRD's "the Pi has no mic"**: the Pi gains a button and a mic, uploads its recording through a new Pi-only endpoint, and the page picks up that job. Implements more of F1.
 - Add Playwright tests in `web/e2e/` against the mock data layer.
 
 Implements PRD F1 (browser side: record and submit) and F9 (items, last-seen snapshot with overlay, history, lost count), plus the web half of the job hand-off. Prepares for F10 (Vercel) without deploying.
@@ -25,7 +26,8 @@ Implements PRD F1 (browser side: record and submit) and F9 (items, last-seen sna
 
 - Desktop job processing (STT, matching, narrator, TTS) and the Pi polling loop. This change provides the endpoints they call and documents the columns they write; it does not implement either side.
 - Deployment to Vercel or the custom domain (F10 stays deferred).
-- Wake word or hands-free listening; push-to-talk only.
+- Wake word or hands-free listening; push-to-talk (on the website or the camera's button) only.
+- The Pi's button and mic code. This change defines the endpoint it calls; the Pi side is built with the Pi service.
 - Live camera video in the browser; screens show stored snapshots only.
 - Creating or editing items, aliases, or zones from the UI.
 - Multi-user accounts.
