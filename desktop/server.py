@@ -25,9 +25,13 @@ s3 = boto3.client(
 model = YOLO(os.environ.get("YOLO_WEIGHTS_PATH") or "yolov8n.pt")
 
 
-def has_result(name: str) -> bool:
+def result_name(key: str) -> str:
+    return f"{Path(key).stem}_result.jpg"  # incoming/abc.jpg -> results/abc_result.jpg
+
+
+def has_result(key: str) -> bool:
     try:
-        s3.head_object(Bucket=BUCKET, Key=f"results/{name}")
+        s3.head_object(Bucket=BUCKET, Key=f"results/{result_name(key)}")
         return True
     except ClientError as e:
         if e.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
@@ -42,7 +46,7 @@ def process(key: str) -> None:
         s3.download_file(BUCKET, key, src)
         result = model(src)[0]
         result.save(filename=out)
-        s3.upload_file(out, BUCKET, f"results/{name}")
+        s3.upload_file(out, BUCKET, f"results/{result_name(key)}")
     print(name, [result.names[int(c)] for c in result.boxes.cls], flush=True)
 
 
@@ -54,7 +58,7 @@ def main() -> None:
                 key = obj["Key"]
                 # one bad file must not stop the loop
                 try:
-                    if key.endswith(".jpg") and not has_result(Path(key).name):
+                    if key.endswith(".jpg") and not has_result(key):
                         process(key)
                 except Exception as e:
                     print(f"failed {key}: {e}", flush=True)
