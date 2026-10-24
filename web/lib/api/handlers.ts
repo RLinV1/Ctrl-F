@@ -1,5 +1,6 @@
 import { SIGHTINGS_DEFAULT_LIMIT, SIGHTINGS_MAX_LIMIT, type Store } from "../data/store";
 import { audioExtension } from "../data/rules";
+import { zip } from "../zip";
 
 /** Route logic as plain functions of a Store, so tests can call them without Next. */
 
@@ -50,6 +51,32 @@ export async function postCorrection(store: Store, id: string, request: Request)
 export async function getJob(store: Store, id: string) {
   const job = await store.getJob(id);
   return job ? json(job) : error("job not found", 404);
+}
+
+/** A raw photo from incoming/. `?download=1` makes the browser save it instead of showing it. */
+export async function getPhoto(store: Store, id: string, url: URL) {
+  const bytes = await store.getPhoto(id);
+  if (!bytes) return error("photo not found", 404);
+  const headers: Record<string, string> = { "content-type": "image/jpeg", "cache-control": "private, max-age=3600" };
+  if (url.searchParams.get("download")) headers["content-disposition"] = `attachment; filename="${id}.jpg"`;
+  return new Response(new Uint8Array(bytes), { headers });
+}
+
+const ZIP_MAX_PHOTOS = 200;
+
+/** Every raw photo in incoming/ as one zip. */
+export async function getPhotoZip(store: Store) {
+  const photos = (await store.listPhotos()).slice(0, ZIP_MAX_PHOTOS);
+  if (photos.length === 0) return error("no photos to download", 404);
+  const files: { name: string; data: Uint8Array }[] = [];
+  for (let i = 0; i < photos.length; i += 8) {
+    const batch = await Promise.all(photos.slice(i, i + 8).map(async (p) => ({ name: `${p.id}.jpg`, data: await store.getPhoto(p.id) })));
+    for (const f of batch) if (f.data) files.push({ name: f.name, data: f.data });
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  return new Response(new Uint8Array(zip(files)), {
+    headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="ctrlf-photos-${day}.zip"` },
+  });
 }
 
 export async function getItems(store: Store) {

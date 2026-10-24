@@ -39,3 +39,6 @@ export type JobView = {
 };
 
 export type DeviceStatus = { device: "pi" | "desktop"; lastSeenAt: string | null; online: boolean };
+
+/** A raw photo the Pi uploaded to incoming/. */
+export type Photo = { id: string; takenAt: string; bytes: number };
