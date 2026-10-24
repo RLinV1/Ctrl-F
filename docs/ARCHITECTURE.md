@@ -145,9 +145,9 @@ These are proposals. Change them while building, and update this file in the sam
 
 Postgres is skipped. One bucket holds jobs, photos, results and memory; the web server does STT, narration and TTS.
 
-1. Browser records, `PUT /api/uploads/audio` stores `audio/<uuid>.<ext>`, `POST /api/jobs` runs ElevenLabs STT and Gemini item picking, writes `jobs/<id>.json` and a `queue/<id>` marker.
+1. Browser records and `POST /api/jobs` sends the recording as the request body. The web server runs ElevenLabs STT and Gemini item picking, drops the audio (no audio is stored in the bucket), writes `jobs/<id>.json` and a `queue/<id>` marker.
 2. `pi/agent.py` polls `GET /api/jobs/next` (bearer `PI_JOB_TOKEN`), gets `{id, targets}`, and `pi/capture.py` uploads `incoming/<id>.json` then `incoming/<id>.jpg`.
 3. `desktop/server.py` runs YOLO and writes `results/<id>_result.json` then `results/<id>_result.jpg`, and touches `heartbeat/desktop`.
-4. `GET /api/jobs/<id>` sees the result jpg, has Gemini word the reply from the result JSON, has ElevenLabs speak it (`replies/<id>.mp3`, word timings), updates `memory.json` (sightings, lost counts) and marks the job done.
+4. `GET /api/jobs/<id>` sees the result jpg, has Gemini word the reply from the result JSON, has ElevenLabs speak it (held in web server memory and served at `/api/jobs/<id>/audio`, with word timings), updates `memory.json` (sightings, lost counts) and marks the job done.
 
 A request that names no known item skips the Pi and is answered from step 4 directly.

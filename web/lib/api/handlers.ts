@@ -7,51 +7,31 @@ import { audioExtension } from "../data/rules";
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const error = (message: string, status: number) => json({ error: message }, status);
 
-async function readJson(request: Request): Promise<Record<string, unknown> | null> {
-  try {
-    const body = await request.json();
-    return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
-export async function postUpload(store: Store, request: Request) {
-  const body = await readJson(request);
-  const contentType = typeof body?.contentType === "string" ? body.contentType : "";
+/** The recording is the request body. It is transcribed and dropped: audio is never stored. */
+export async function postJob(store: Store, request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
   try {
     audioExtension(contentType);
   } catch {
-    return error("contentType must be audio/webm, audio/mp4 or audio/ogg", 400);
+    return error("content-type must be audio/webm, audio/mp4 or audio/ogg", 400);
   }
-  return json(await store.createUploadSlot(contentType), 201);
+  const audio = new Uint8Array(await request.arrayBuffer());
+  if (audio.byteLength === 0) return error("empty recording", 400);
+  if (audio.byteLength > MAX_AUDIO_BYTES) return error("recording too long", 413);
+  try {
+    return json(await store.createJob(audio, contentType), 201);
+  } catch (e) {
+    console.error("[job]", e);
+    return error("The request could not be queued.", 502);
+  }
 }
 
-/** The upload slot's PUT target: the recording goes through the server, so the bucket needs no CORS rules. */
-export async function putAudio(store: Store, request: Request) {
-  const key = new URL(request.url).searchParams.get("key") ?? "";
-  const body = await request.arrayBuffer();
-  if (body.byteLength === 0) return error("empty upload", 400);
-  try {
-    await store.storeAudio(key, body, request.headers.get("content-type") ?? "audio/webm");
-  } catch (e) {
-    if ((e as Error).message === "bad key") return error("bad key", 400);
-    console.error("[upload]", e);
-    return error("The recording could not be stored.", 502);
-  }
-  return new Response(null, { status: 200 });
-}
-
-export async function postJob(store: Store, request: Request) {
-  const body = await readJson(request);
-  const audioKey = typeof body?.audioKey === "string" ? body.audioKey : "";
-  if (!audioKey.startsWith("audio/")) return error("audioKey is required", 400);
-  if (!(await store.audioExists(audioKey))) return error("no audio stored at audioKey", 400);
-  try {
-    return json(await store.createJob(audioKey), 201);
-  } catch (e) {
-    return error((e as Error).message, 502);
-  }
+/** The spoken reply, kept in memory only. */
+export async function getReplyAudio(store: Store, id: string) {
+  const audio = await store.replyAudio(id);
+  return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no reply audio", 404);
 }
 
 function tokenMatches(header: string | null, expected: string | undefined) {

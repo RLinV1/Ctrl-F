@@ -10,24 +10,22 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result } from "./narrate";
-import { AUDIO_KEY, audioExtension } from "./rules";
+import { audioExtension } from "./rules";
 import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./types";
 
 /*
- * Everything lives in one bucket, no database:
- *   audio/<id>.<ext>             the recording (browser, through PUT /api/uploads/audio)
+ * Everything lives in one bucket, no database. No audio is stored: the recording is transcribed and dropped, and the spoken reply is held in memory.
  *   jobs/<id>.json               the job record
  *   queue/<id>                   marker: a job waiting for the Pi
  *   incoming/<id>.json + .jpg    the Pi's photo and the items asked for -> desktop/server.py
  *   results/<id>_result.json/jpg desktop/server.py's answer
- *   replies/<id>.mp3             the spoken reply
  *   memory.json                  items and sightings, for the Items and History screens
  *   heartbeat/desktop            touched by desktop/server.py every loop
  */
 
 const SIGN_SECONDS = 3600;
-const SLOT_MS = 10 * 60_000;
+const REPLY_CACHE = 20; // spoken replies kept in memory
 const STALE_PENDING_MS = 60_000;
 const STALE_MS = 120_000;
 const ONLINE_MS = { pi: 15_000, desktop: 60_000 } as const;
@@ -47,7 +45,6 @@ type Stored = {
 type JobRec = {
   id: string;
   status: JobView["status"];
-  audioKey: string;
   createdAt: string;
   transcript: string;
   targets: string[];
@@ -55,7 +52,6 @@ type JobRec = {
   target?: string | null;
   found?: boolean;
   replyText?: string;
-  replyKey?: string | null;
   replyTimings?: WordTime[] | null;
   match?: Stored | null;
   lastSighting?: Stored | null;
@@ -72,6 +68,7 @@ export class S3Store implements Store {
   private signer: S3Client;
   private lastPi: number | null = null;
   private finishing = new Map<string, Promise<JobRec>>();
+  private replies = new Map<string, Buffer>();
   private memoryLock: Promise<unknown> = Promise.resolve();
 
   constructor() {
@@ -137,30 +134,10 @@ export class S3Store implements Store {
     return next;
   }
 
-  async createUploadSlot(contentType: string) {
-    const audioKey = `audio/${randomUUID()}.${audioExtension(contentType)}`;
-    return {
-      audioKey,
-      uploadUrl: `/api/uploads/audio?key=${encodeURIComponent(audioKey)}`,
-      expiresAt: new Date(Date.now() + SLOT_MS).toISOString(),
-    };
-  }
-
-  async storeAudio(key: string, body: ArrayBuffer, contentType: string) {
-    if (!AUDIO_KEY.test(key)) throw new Error("bad key");
-    await this.put(key, new Uint8Array(body), contentType);
-  }
-
-  async audioExists(key: string) {
-    return AUDIO_KEY.test(key) && (await this.head(key)) !== null;
-  }
-
-  async createJob(audioKey: string): Promise<JobView> {
-    const audio = await this.getBytes(audioKey);
-    if (!audio) throw new Error("The recording went missing. Ask again.");
+  async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
     let transcript = "";
     try {
-      transcript = await transcribe(audio, audioKey.split("/")[1]);
+      transcript = await transcribe(audio, `recording.${audioExtension(contentType)}`);
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
@@ -168,7 +145,6 @@ export class S3Store implements Store {
     const rec: JobRec = {
       id: randomUUID(),
       status: "pending",
-      audioKey,
       createdAt: new Date().toISOString(),
       transcript,
       targets,
@@ -189,6 +165,10 @@ export class S3Store implements Store {
     if (!rec || rec.status !== "pending") return null;
     await this.putJson(`jobs/${id}.json`, { ...rec, status: "claimed" });
     return { id, targets: rec.targets };
+  }
+
+  async replyAudio(id: string) {
+    return this.replies.get(id) ?? null;
   }
 
   async touchDevice() {
@@ -259,16 +239,14 @@ export class S3Store implements Store {
 
     const match = result.status === "found" && result.matches[0] ? stored(result.matches[0], result.target ?? result.matches[0].name) : null;
     const text = await narrate(factsFor(result, before ? relativeTime(before.seenAt, Date.now()) : null));
-    let replyKey: string | null = null;
     let timings: WordTime[] | null = null;
     try {
       const spoken = await speak(text);
-      replyKey = `replies/${rec.id}.mp3`;
       timings = spoken.timings;
-      await this.put(replyKey, spoken.audio, "audio/mpeg");
+      this.replies.set(rec.id, spoken.audio);
+      for (const old of [...this.replies.keys()].slice(0, -REPLY_CACHE)) this.replies.delete(old);
     } catch (error) {
       console.error("[tts]", error); // the text still answers
-      replyKey = null;
     }
 
     const done: JobRec = {
@@ -277,7 +255,6 @@ export class S3Store implements Store {
       target: result.target,
       found: result.status === "found",
       replyText: text,
-      replyKey,
       replyTimings: timings,
       match,
       lastSighting: match ? null : before,
@@ -311,7 +288,7 @@ export class S3Store implements Store {
       itemId: target ? slug(target) : null,
       found: rec.found ?? null,
       replyText: rec.replyText ?? null,
-      replyAudioUrl: rec.replyKey ? await this.sign(rec.replyKey) : null,
+      replyAudioUrl: this.replies.has(rec.id) ? `/api/jobs/${rec.id}/audio` : null,
       replyTimings: rec.replyTimings ?? null,
       match: rec.match ? await this.sighting(rec.match) : null,
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,

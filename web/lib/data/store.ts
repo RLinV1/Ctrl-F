@@ -6,11 +6,10 @@ export const HISTORY_PAGE_SIZE = 12;
 
 /** What the route handlers and pages need from storage. The S3 store is the only implementation. */
 export interface Store {
-  createUploadSlot(contentType: string): Promise<{ audioKey: string; uploadUrl: string; expiresAt: string }>;
-  storeAudio(key: string, body: ArrayBuffer, contentType: string): Promise<void>;
-  audioExists(key: string): Promise<boolean>;
   /** Transcribes the recording and picks the items asked for. Never throws on a bad transcript: it becomes a no-target job. */
-  createJob(audioKey: string): Promise<JobView>;
+  createJob(audio: Uint8Array, contentType: string): Promise<JobView>;
+  /** The spoken reply for a job, if this server still holds it. */
+  replyAudio(id: string): Promise<Buffer | null>;
   /** Oldest pending job for the Pi, now claimed, with the items to look for. */
   claimNextJob(): Promise<{ id: string; targets: string[] } | null>;
   touchDevice(device: "pi"): Promise<void>;

@@ -127,22 +127,9 @@ function useRecorder() {
 
 async function submit(blob: Blob): Promise<string> {
   const contentType = blob.type.split(";")[0] || "audio/webm";
-  const slotRes = await fetch("/api/uploads", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contentType }),
-  });
-  if (!slotRes.ok) throw new Error("Could not get an upload slot.");
-  const slot: { audioKey: string; uploadUrl: string } = await slotRes.json();
-  const put = await fetch(slot.uploadUrl, { method: "PUT", headers: { "content-type": contentType }, body: blob });
-  if (!put.ok) throw new Error("The recording did not upload.");
-  const jobRes = await fetch("/api/jobs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ audioKey: slot.audioKey }),
-  });
-  if (!jobRes.ok) throw new Error((await jobRes.json().catch(() => null))?.error ?? "The request was not accepted.");
-  return (await jobRes.json()).id;
+  const res = await fetch("/api/jobs", { method: "POST", headers: { "content-type": contentType }, body: blob });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "The request was not accepted.");
+  return (await res.json()).id;
 }
 
 function stepsFor(job: JobView | null): AgentStep[] {

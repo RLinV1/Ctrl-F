@@ -6,5 +6,3 @@ export function audioExtension(contentType: string): string {
   if (!ext) throw new Error(`unsupported audio type: ${contentType}`);
   return ext;
 }
-
-export const AUDIO_KEY = /^audio\/[0-9a-f-]{36}\.(webm|m4a|ogg)$/;
