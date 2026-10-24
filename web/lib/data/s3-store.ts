@@ -169,13 +169,16 @@ export class S3Store implements Store {
   }
 
   async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {
+    const t0 = Date.now();
     let transcript = "";
     try {
       transcript = await transcribe(audio, `recording.${audioExtension(contentType)}`);
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
+    const tStt = Date.now();
     const { targets, unsupported } = await pickTargets(transcript, await this.knownItems());
+    const tPick = Date.now();
     const rec: JobRec = {
       id: randomUUID(),
       status: "pending",
@@ -194,6 +197,7 @@ export class S3Store implements Store {
         ContentType: "application/json",
       }),
     );
+    console.log(`[timing] ${rec.id.slice(0, 8)} send: speech-to-text ${tStt - t0} ms, picking items ${tPick - tStt} ms, writing job ${Date.now() - tPick} ms`);
     this.jobs.set(rec.id, rec);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
@@ -274,7 +278,9 @@ export class S3Store implements Store {
       result.status === "found" && result.matches[0]
         ? this.stored(rec.id, now, result, result.matches[0], result.target ?? result.matches[0].name)
         : null;
+    const tNarrate = Date.now();
     const text = await narrate(factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null));
+    const tSpeak = Date.now();
     let timings: WordTime[] | null = null;
     try {
       const spoken = await speak(text);
@@ -284,6 +290,12 @@ export class S3Store implements Store {
     } catch (error) {
       console.error("[tts]", error); // the text still answers
     }
+
+    const made = Date.parse(rec.createdAt);
+    const at = async (prefix: string) => (await this.list(prefix, 5)).map((o) => +o.at - made);
+    console.log(
+      `[timing] ${rec.id.slice(0, 8)} done: Pi photo +${(await at(`incoming/${rec.id}.jpg`))[0] ?? "?"} ms, result +${(await at(photoKey(rec.id)))[0] ?? "?"} ms after the job; narration ${tSpeak - tNarrate} ms, speech ${Date.now() - tSpeak} ms`,
+    );
 
     const done: JobRec = {
       ...rec,

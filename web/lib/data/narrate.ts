@@ -123,10 +123,19 @@ export async function narrate(facts: Record<string, unknown>): Promise<string> {
   return plainReply(facts);
 }
 
+/** Known items named word for word in what was said; "phone" is dropped when "cell phone" is also there. */
+export function namedItems(said: string, known: string[]): string[] {
+  const text = ` ${said.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `; // words only, so "keys?" still matches
+  const hits = known.filter((k) => text.includes(` ${k} `) || text.includes(` ${k}s `));
+  return hits.filter((k) => !hits.some((other) => other !== k && other.includes(k)));
+}
+
 /** Which known items did the user ask for? `unsupported` is an item they named that we cannot find. */
 export async function pickTargets(transcript: string, known: string[]): Promise<{ targets: string[]; unsupported: string | null }> {
   const said = transcript.toLowerCase();
   if (!said.trim()) return { targets: [], unsupported: null };
+  const direct = namedItems(said, known);
+  if (direct.length) return { targets: direct, unsupported: null }; // saves a Gemini round trip when the item is named plainly
   try {
     const prompt =
       `Items we can find: ${JSON.stringify(known)}. The user said: ${JSON.stringify(transcript)}. ` +

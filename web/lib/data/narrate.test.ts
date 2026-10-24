@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factsFor, near, wordTimes, where, type Detection } from "./narrate";
+import { factsFor, namedItems, near, wordTimes, where, type Detection } from "./narrate";
 
 const det = (name: string, box: [number, number, number, number], conf = 0.9): Detection => ({ name, conf, box });
 
@@ -30,6 +30,14 @@ describe("narration helpers", () => {
 
   it("says a missing item was never seen when there is no earlier sighting", () => {
     expect(factsFor({ status: "not_visible", target: "keys", matches: [], detections: [] })).toMatchObject({ never_seen_before: true });
+  });
+
+  it("finds items named in a sentence without Gemini", () => {
+    const known = ["phone", "cell phone", "keys", "airpods case", "airpods"];
+    expect(namedItems("Where are my keys?", known)).toEqual(["keys"]);
+    expect(namedItems("find my cell phone", known)).toEqual(["cell phone"]);
+    expect(namedItems("where is my airpods case", known)).toEqual(["airpods case"]);
+    expect(namedItems("hello there", known)).toEqual([]);
   });
 
   it("turns character times into word times", () => {
