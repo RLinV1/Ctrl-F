@@ -24,7 +24,6 @@ export default function Mic() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [result, setResult] = useState<Found | null>(null);
   const [says, setSays] = useState("");
-  const [replyUrl, setReplyUrl] = useState<string | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const video = useRef<HTMLVideoElement>(null);
 
@@ -51,7 +50,7 @@ export default function Mic() {
     setSays(text);
     try {
       const res = await fetch("/api/tts", { method: "POST", body: JSON.stringify({ text }) });
-      if (res.ok) setReplyUrl(URL.createObjectURL(await res.blob())); // the player below autoplays it and can replay it
+      if (res.ok) await new Audio(URL.createObjectURL(await res.blob())).play();
     } catch {
       /* no audio: the text above is enough */
     }
@@ -84,7 +83,6 @@ export default function Mic() {
       setPhotoUrl(null);
       setResult(null);
       setSays("");
-      setReplyUrl(null);
       setStatus({ text: "Listening... click Stop when you are done." });
       rec.addEventListener("stop", () => void finish(new Blob(chunks, { type: rec.mimeType })), { once: true });
     } catch (err) {
@@ -160,12 +158,6 @@ export default function Mic() {
           )}
           <StatusLine status={status} />
           {says && <p><b>{says}</b></p>}
-          {replyUrl && (
-            <p>
-              Sherlock's reply
-              <audio controls autoPlay src={replyUrl} style={{ width: "100%" }} />
-            </p>
-          )}
           {result && (
             <p className="out">
               Model {result.model}, {result.seconds}s. Green = what you asked for, gray = other things it knows. Detected:{" "}
