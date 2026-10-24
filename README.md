@@ -22,6 +22,17 @@ Theme: steampunk. The UI looks like brass and gears, and the narrator talks like
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data flow, data model, API contracts. |
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Chosen tools and the reason for each. |
 
+## Run locally
+
+Everything runs locally first, with Docker Compose for the data services.
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Stack details: [docs/TECH_STACK.md](docs/TECH_STACK.md). Go-live stack: [docs/TECH_STACK_LIVE.md](docs/TECH_STACK_LIVE.md).
+
 ## Spec-driven development
 
 This repo uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Behavior specs are in `openspec/specs/`, proposed changes in `openspec/changes/`. Start a change with `/opsx:propose "your idea"` in Claude Code. See [AGENTS.md](AGENTS.md).
