@@ -6,6 +6,52 @@ The Ask screen: a person holds one control, says what they are looking for, and 
 
 ## ADDED Requirements
 
+### Requirement: Three ways to ask
+The Ask screen SHALL be a single chat-style prompt with a menu inside it for choosing how to ask: typing the question (the default), speaking into this computer's microphone, or pressing the camera's button to ask through the camera's mic. The menu SHALL show the chosen way, and the prompt SHALL show only that way's control. There is no model selector.
+
+#### Scenario: Switching
+- **WHEN** the user opens the menu and picks "Speak here"
+- **THEN** the menu reads "Speak here", the text field and Send are replaced by a hold-to-talk button, and the prompt says to hold the button and ask
+
+### Requirement: Visual-novel stage
+The Ask screen SHALL show the narrator on a stage with a dialogue box carrying his name tag. Before a question the box SHALL greet with one of three set lines, a different one on each page load in turn, and while a question is worked on it SHALL say which stage the job is at.
+
+#### Scenario: Greeting
+- **WHEN** the page is loaded three times
+- **THEN** the narrator's box shows each of the three greetings once, in order
+
+### Requirement: The answer plays out on the stage
+Once answered, the reply SHALL play by itself while the narrator talks in his study. When he finishes, the study SHALL fade to reveal the camera's photo behind him, then he and his box SHALL fade out, leaving the photo with the item circled. A ▼ SHALL skip ahead and a "Narrator" control SHALL bring him back. If the browser blocks the voice, he SHALL stay until the user moves on.
+
+#### Scenario: Answer on the stage
+- **WHEN** a question about the wallet is answered as found
+- **THEN** the narrator speaks the reply, the study then fades to the photo behind him, and he and his box fade out leaving the wallet circled; "Narrator" brings him back
+
+### Requirement: Results appear only after asking
+The answer and the camera view SHALL NOT be shown until a question has been sent; once one is, the progress, the answer and the camera's photo appear below the prompt.
+
+#### Scenario: Before and after
+- **WHEN** the page opens
+- **THEN** only the greeting and the prompt are shown, and after a question is sent the progress state and then the answer and the camera view appear
+
+### Requirement: Ask by typing
+In typing mode the prompt SHALL send the typed question when Send is pressed or Enter is typed (Shift+Enter starts a new line), keep Send disabled while the field is empty or a question is being worked on, and show the answer exactly as for a spoken question.
+
+#### Scenario: Typed question answered
+- **WHEN** the user types "where are my glasses" and presses Enter
+- **THEN** the progress state shows, then the answer with "You asked: “where are my glasses”" and the photo with the glasses circled
+
+### Requirement: Ask with the camera button
+In camera-button mode the screen SHALL say it is listening for the camera's button, pick up a question asked at the camera within 2 seconds of its job being created, and show its progress and answer as for any question. It SHALL say when the camera is offline.
+
+#### Scenario: Button pressed at the camera
+- **WHEN** camera-button mode is open and the camera posts a new recording
+- **THEN** the screen moves to the progress state for that question and then shows its answer
+
+#### Scenario: Camera offline
+- **WHEN** camera-button mode is open and the camera is offline
+- **THEN** the screen says the camera's button cannot be heard
+
 ### Requirement: Push-to-talk recording
 The Ask screen SHALL record from the microphone only while the talk control is held, by pointer or by the Space key while the control has focus. Releasing it SHALL submit the clip. Clips under 0.5 seconds SHALL be discarded with a short hint.
 

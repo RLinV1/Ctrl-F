@@ -1,16 +1,22 @@
 "use client";
 
+import { Camera, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import AILoadingState, { type AgentStep } from "@/components/kokonutui/ai-loading";
-import AI_Voice from "@/components/kokonutui/ai-voice";
-import ReceiptPrinter, { type SlipLine } from "@/components/kokonutui/receipt-printer";
-import SyncedTranscript from "@/components/kokonutui/synced-transcript";
+import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
 import type { JobView } from "@/lib/data/types";
-import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
-import { CogTrain } from "./cog-train";
-import { Narrator } from "./narrator";
-import { SnapshotFrame } from "./snapshot-frame";
+import { GREETINGS, GREETING_KEY, nextGreetingIndex } from "@/lib/greetings";
+import { useDeviceStatus } from "./device-status";
+import { HoldToTalk, SimulatePress, useCameraJobs, useElapsed } from "./ask-inputs";
+import { Stage } from "./stage";
+
+/** The three ways to ask, picked from the menu inside the prompt. */
+export type AskMode = "speak" | "type" | "camera";
+const MODES: PromptMode[] = [
+  { id: "speak", name: "Speak here", description: "Hold the button and talk to this computer", icon: <Mic /> },
+  { id: "type", name: "Type it", description: "Write the question", icon: <Keyboard /> },
+  { id: "camera", name: "Camera button", description: "Press the camera's button and use its mic", icon: <Camera /> },
+];
 
 export const POLL_MS = 400;
 export const MIN_HOLD_S = 0.5;
@@ -149,42 +155,48 @@ async function submit(blob: Blob): Promise<string> {
   return (await res.json()).id;
 }
 
-function stepsFor(job: JobView | null): AgentStep[] {
-  const claimed = job?.status === "claimed";
-  return [
-    { id: "sent", label: "Request sent", status: "done" },
-    { id: "photo", label: claimed ? "Camera took a photo" : "Waiting for the camera", status: claimed ? "done" : "running" },
-    { id: "look", label: "Looking for it", status: claimed ? "running" : "pending" },
-  ];
-}
-
-function slipFor(job: JobView): { stamp: string; lines: SlipLine[] } {
-  const lines: SlipLine[] = [];
-  if (job.transcript) lines.push({ text: `Asked: “${job.transcript}”`, quiet: true });
-  const name = job.target ?? "that";
-  if (job.found && job.match) {
-    lines.push({ text: `Found: ${name}`, strong: true });
-    const place = placeWords(job.match.zone);
-    lines.push({ text: place ? `On ${place}` : "Place not marked" });
-    lines.push({ text: `${percent(job.match.confidence)} sure`, quiet: true });
-  } else if (job.found === null) {
-    lines.push({ text: job.target ? `Cannot seek: ${name}` : "No item named", strong: true });
-  } else if (job.lastSighting) {
-    lines.push({ text: `Not in view: ${name}`, strong: true });
-    const place = placeWords(job.lastSighting.zone);
-    lines.push({ text: `Last seen ${clockTime(job.lastSighting.seenAt)}${place ? `, ${place}` : ""}` });
-  } else {
-    lines.push({ text: `Never seen: ${name}`, strong: true });
+// One greeting per page load: picked the first time it is read in the browser, then kept.
+let greetingIndex: number | null = null;
+function pickGreeting(): number {
+  if (greetingIndex !== null) return greetingIndex;
+  try {
+    greetingIndex = nextGreetingIndex(localStorage.getItem(GREETING_KEY));
+    localStorage.setItem(GREETING_KEY, String(greetingIndex));
+  } catch {
+    // Storage blocked (a private window, say): any of the lines will do.
+    greetingIndex = Math.floor(Math.random() * GREETINGS.length);
   }
-  return { stamp: clockTime(job.createdAt), lines };
+  return greetingIndex;
 }
 
+/** The narrator's opening line, from the pool in lib/greetings.ts, a different one each reload. */
+function useGreeting(): string | null {
+  const index = useSyncExternalStore(noSubscribe, pickGreeting, () => -1);
+  return index < 0 ? null : GREETINGS[index];
+}
+
+/**
+ * The Ask page, starting fresh every time it is shown. Next keeps pages alive in the
+ * background when you navigate away, so without this, coming back from Items would show
+ * the last answer (and its reply could keep playing). Leaving bumps the key, so the
+ * session underneath is thrown away and rebuilt at its default.
+ */
 export function AskPanel() {
-  const { mic, level, start, stop } = useRecorder();
+  const [visit, setVisit] = useState(0);
+  // Cleanup runs when the page is hidden (navigated away from) or unmounted.
+  useEffect(() => () => setVisit((v) => v + 1), []);
+  return <AskSession key={visit} />;
+}
+
+function AskSession() {
+  const greeting = useGreeting();
+  const { mic, start, stop } = useRecorder();
+  const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  const [blocked, setBlocked] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  const [mode, setMode] = useState<AskMode>("type");
   const holdRef = useRef<Promise<boolean> | null>(null);
+  const recording = phase.kind === "recording";
+  const elapsed = useElapsed(recording);
 
   // Poll the job until it is answered, failed, or stale.
   const jobId = phase.kind === "waiting" ? phase.jobId : null;
@@ -233,7 +245,6 @@ export function AskPanel() {
   }, [phase]);
 
   const onHoldStart = () => {
-    setBlocked(false);
     setPhase({ kind: "recording" });
     holdRef.current = start();
   };
@@ -260,6 +271,28 @@ export function AskPanel() {
     }
   };
 
+  const askText = async (text: string) => {
+    setPhase({ kind: "sending" });
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "The question was not accepted.");
+      setPhase({ kind: "waiting", job: null, jobId: body.id });
+    } catch (error) {
+      setPhase({ kind: "failed", message: (error as Error).message });
+    }
+  };
+
+  const onCameraJob = useCallback((id: string) => {
+    setPhase({ kind: "waiting", job: null, jobId: id });
+  }, []);
+
+  const cameraOffline = status?.some((d) => d.device === "pi" && !d.online) ?? false;
+
   const correct = async (found: boolean) => {
     if (phase.kind !== "answered") return;
     const res = await fetch(`/api/jobs/${phase.job.id}/correct`, {
@@ -273,105 +306,92 @@ export function AskPanel() {
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
-  const slip = answer ? slipFor(answer) : null;
+  useCameraJobs(mode === "camera" && !working, onCameraJob);
+
+  const changeMode = (next: string) => {
+    setMode(next as AskMode);
+    if (phase.kind === "idle" && phase.hint) setPhase({ kind: "idle" });
+  };
+
+  let body = null;
+  let action = null;
+  if (mode === "speak") {
+    body = (
+      <p className={recording ? "text-ink" : "text-ink-muted"}>
+        {recording
+          ? `Listening… ${Math.floor(elapsed)}s. Let go to send.`
+          : working
+            ? "Working on your last question…"
+            : "Hold the button and ask, like “where are my keys?”"}
+      </p>
+    );
+    action = <HoldToTalk disabled={micBlocked || working} onHoldEnd={onHoldEnd} onHoldStart={onHoldStart} recording={recording} />;
+  } else if (mode === "camera") {
+    body = (
+      <p className="text-ink-muted" data-testid="camera-button">
+        {working
+          ? "Working on the camera's question…"
+          : cameraOffline
+            ? "The camera is offline, so its button cannot be heard."
+            : "Press the button on the camera and ask out loud. Listening for the camera button…"}
+      </p>
+    );
+    action = !working && !cameraOffline ? <SimulatePress /> : null;
+  }
+
+  const line =
+    phase.kind === "recording"
+      ? "I am listening…"
+      : phase.kind === "sending"
+        ? "Sending your question…"
+        : phase.kind === "waiting"
+          ? phase.job?.status === "claimed"
+            ? "The camera has a photo. Looking for it…"
+            : "Waiting for the camera to take a photo…"
+          : phase.kind === "offline"
+            ? "The camera has not picked this up. It may be offline or switched off. Check it, then ask again."
+            : phase.kind === "failed"
+              ? `That request failed. ${phase.message} Ask again to try once more.`
+              : (phase.kind === "idle" && phase.hint) || greeting || "";
 
   return (
-    <div className="grid gap-4 md:grid-cols-12">
-      <section aria-labelledby="ask-title" className="bg-panel p-5 md:col-span-9">
-        <h2 className="font-semibold text-[15px]" id="ask-title">
-          Ask where something is
-        </h2>
-
-        <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
-          <div className="flex flex-col items-center">
-            <AI_Voice
-              caption={working ? "Working on your last question" : "Hold to ask"}
-              disabled={micBlocked || working}
-              level={level}
-              onHoldEnd={onHoldEnd}
-              onHoldStart={onHoldStart}
-              recording={phase.kind === "recording"}
-            />
-            {mic === "denied" && (
-              <p className="mt-3 text-center text-copper text-sm" role="alert">
-                The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then
-                reload. <Link className="underline underline-offset-4" href="/items">Items</Link> still work without it.
-              </p>
-            )}
-            {mic === "unavailable" && (
-              <p className="mt-3 text-center text-copper text-sm" role="alert">
-                No microphone is available in this browser. You can still browse{" "}
-                <Link className="underline underline-offset-4" href="/items">Items</Link>.
-              </p>
-            )}
-            {phase.kind === "idle" && phase.hint && (
-              <p className="mt-3 text-center text-sm" role="status">
-                {phase.hint}
-              </p>
-            )}
-          </div>
-
-          <div aria-live="polite" className="min-w-0" data-phase={phase.kind}>
-            {(phase.kind === "idle" || phase.kind === "recording") && (
-              <p className="max-w-[46ch] text-[17px] text-ink-muted">
-                Say what you are looking for, like “where are my keys?”. The camera takes a photo and the answer is
-                read back to you.
-              </p>
-            )}
-            {working && (
-              <div>
-                <CogTrain className="mb-3" />
-                <AILoadingState
-                  className="justify-start"
-                  collapseWhenDone={false}
-                  steps={phase.kind === "waiting" ? stepsFor(phase.job) : [{ id: "sent", label: "Sending your question", status: "running" }]}
-                />
-              </div>
-            )}
-            {phase.kind === "offline" && (
-              <div role="alert">
-                <p className="font-semibold text-[17px]">The camera has not picked this up.</p>
-                <p className="mt-1 text-ink-muted">It may be offline or switched off. Check it, then ask again.</p>
-              </div>
-            )}
-            {phase.kind === "failed" && (
-              <div role="alert">
-                <p className="font-semibold text-[17px] text-copper">That request failed.</p>
-                <p className="mt-1 text-ink-muted">{phase.message} Hold the button to try again.</p>
-              </div>
-            )}
-            {answer && (
-              <div data-testid="answer">
-                {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
-                <SyncedTranscript
-                  className="mt-2"
-                  key={`${answer.id}:${answer.corrected}:${answer.replyTimings ? 1 : 0}`}
-                  onAutoplayBlocked={() => setBlocked(true)}
-                  onPlayingChange={setSpeaking}
-                  src={answer.replyAudioUrl}
-                  text={answer.replyText ?? ""}
-                  timings={answer.replyTimings}
-                />
-                {blocked && <p className="mt-2 text-ink-muted text-sm">Press play to hear the answer.</p>}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
-        {phase.kind === "answered" && <CorrectPrompt job={phase.job} key={`${phase.job.id}:${phase.job.corrected}`} onCorrect={correct} />}
-      </section>
-
-      {/* The right column: the answer slip once there is one, and the narrator standing in
-          the section's bottom-right corner. In the page flow, so he never covers content. */}
-      <div className="flex flex-col gap-4 md:col-span-3">
-        {slip && answer && (
-          <aside aria-label="Answer slip">
-            <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={`${answer.id}:${answer.corrected}`} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
-          </aside>
-        )}
-        <Narrator className="mt-auto ml-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
+    <div className="flex min-h-[calc(100dvh-120px)] flex-col gap-4">
+      <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
+        <Stage
+          answer={answer}
+          answeredAt={phase.kind === "answered" ? phase.at : 0}
+          aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
+          key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
+          line={line}
+          working={working}
+        />
       </div>
+      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] pb-4">
+      <AI_Prompt
+        action={action}
+        body={body}
+        busy={working}
+        mode={mode}
+        modes={MODES}
+        onModeChange={changeMode}
+        onSubmit={askText}
+        textMode="type"
+      />
+
+      {mode === "speak" && mic === "denied" && (
+        <p className="text-copper text-sm" role="alert">
+          The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then reload, or
+          switch to Type it. <Link className="underline underline-offset-4" href="/items">Items</Link> still work without it.
+        </p>
+      )}
+      {mode === "speak" && mic === "unavailable" && (
+        <p className="text-copper text-sm" role="alert">
+          No microphone is available in this browser. Switch to Type it, or browse{" "}
+          <Link className="underline underline-offset-4" href="/items">Items</Link>.
+        </p>
+      )}
+      </div>
+
     </div>
   );
 }
@@ -381,6 +401,8 @@ function CorrectPrompt({ job, onCorrect }: { job: JobView; onCorrect: (found: bo
   const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
   if (job.found === null) return null;
   const flip = !job.found;
+  const name = job.target ?? "item";
+  const is = name.endsWith("s") ? "are" : "is"; // "the keys are", "the wallet is"
   return (
     <p className="mt-3 text-[15px]" data-testid="correction">
       <span className="text-ink-muted">{job.corrected ? "Corrected by you. " : "Not right? "}</span>
@@ -397,91 +419,9 @@ function CorrectPrompt({ job, onCorrect }: { job: JobView; onCorrect: (found: bo
         }}
         type="button"
       >
-        {flip ? `The ${job.target ?? "item"} is in the photo` : `The ${job.target ?? "item"} is not in the photo`}
+        {flip ? `The ${name} ${is} in the photo` : `The ${name} ${is} not in the photo`}
       </button>
       {state === "failed" && <span className="ml-2 text-copper">That could not be saved.</span>}
-    </p>
-  );
-}
-
-function AnswerPhoto({ job, now }: { job: JobView; now: number }) {
-  const name = job.target ?? "item";
-  if (job.found && job.match) {
-    const m = job.match;
-    const place = placeWords(m.zone);
-    return (
-      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="found">
-        <SnapshotFrame
-          alt={`Camera photo with the ${name} marked`}
-          height={m.snapshot.height}
-          lens={{ box: m.box, label: name, confidence: m.confidence }}
-          priority
-          src={m.snapshot.url}
-          width={m.snapshot.width}
-        />
-        <figcaption className="text-[15px]">
-          <span className="block font-semibold capitalize">{name}</span>
-          <span className="block">{place ? `On ${place}` : "Place not marked"}</span>
-          <span className="figures block text-ink-muted">{percent(m.confidence)} sure</span>
-          <span className="figures block text-ink-muted">Photo at {clockTime(m.seenAt)}</span>
-        </figcaption>
-      </figure>
-    );
-  }
-  if (job.photo) {
-    const s = job.lastSighting;
-    return (
-      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="not-found">
-        <SnapshotFrame
-          alt={`Camera photo taken at ${clockTime(job.photo.seenAt)}`}
-          height={job.photo.height}
-          priority
-          src={job.photo.url}
-          width={job.photo.width}
-        />
-        <figcaption className="text-[15px]">
-          <span className="block font-semibold">{job.found === false ? "Not in view right now" : "What the camera saw"}</span>
-          <span className="figures block text-ink-muted">Photo at {clockTime(job.photo.seenAt)}</span>
-          {s && <span className="block">Last seen {relativeTime(s.seenAt, now)}</span>}
-          {job.found === false && job.itemId && (
-            <Link className="mt-2 block underline underline-offset-4" href={`/items/${job.itemId}`}>
-              See where the {name} {name.endsWith("s") ? "have" : "has"} been
-            </Link>
-          )}
-        </figcaption>
-      </figure>
-    );
-  }
-  if (job.lastSighting) {
-    const s = job.lastSighting;
-    const place = placeWords(s.zone);
-    return (
-      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="not-found">
-        <SnapshotFrame
-          alt={`Last photo with the ${name}, ${relativeTime(s.seenAt, now)}`}
-          height={s.snapshot.height}
-          lens={{ box: s.box, label: name }}
-          src={s.snapshot.url}
-          width={s.snapshot.width}
-        />
-        <figcaption className="text-[15px]">
-          <span className="block font-semibold">Not in view right now</span>
-          <span className="block">
-            Last seen {relativeTime(s.seenAt, now)}
-            {place ? ` on ${place}` : ""}
-          </span>
-          {job.itemId && (
-            <Link className="mt-2 block underline underline-offset-4" href={`/items/${job.itemId}`}>
-              See where the {name} {name.endsWith("s") ? "have" : "has"} been
-            </Link>
-          )}
-        </figcaption>
-      </figure>
-    );
-  }
-  return (
-    <p className="mt-6 text-[15px]" data-testid="never-seen">
-      The camera has not seen the {name} yet. Put it somewhere in view and it will be remembered.
     </p>
   );
 }

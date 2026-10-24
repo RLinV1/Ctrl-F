@@ -1,20 +1,20 @@
 import { expect, test } from "@playwright/test";
-import { foundWallet, hold, hydrated, job, replies, sighting, stubJob, stubMediaClock, stubStatus } from "./fixtures";
+import { chooseMode, expectGreeting, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, typeQuestion } from "./fixtures";
+import { GREETINGS } from "../lib/greetings";
 
 test.describe("push-to-talk", () => {
   test("hold and release sends the question and shows an answer", async ({ page }) => {
     await page.goto("/");
     await hold(page, 1500);
     await expect(page.locator('[data-phase="sending"], [data-phase="waiting"]')).toBeVisible();
-    await expect(page.getByText("Request sent")).toBeVisible();
+    await expect(page.getByText(/Sending your question|Waiting for the camera|Looking for it/)).toBeVisible();
     await expect(page.getByTestId("answer")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/You asked: “/)).toBeVisible();
-    await expect(page.getByRole("document", { name: "Answer slip" })).toContainText("Asked:");
   });
 
   test("Space held on the control records and sends", async ({ page }) => {
     await page.goto("/");
-    await hydrated(page);
+    await chooseMode(page, "Speak here");
     await page.getByTestId("talk").focus();
     await page.keyboard.down(" ");
     await expect(page.getByTestId("talk")).toHaveAttribute("aria-pressed", "true");
@@ -42,6 +42,7 @@ test.describe("push-to-talk", () => {
           : query(d);
     });
     await page.goto("/");
+    await chooseMode(page, "Speak here");
     await expect(page.getByTestId("talk")).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("alert").filter({ hasText: "The microphone is blocked" })).toBeVisible();
     await page.getByRole("alert").getByRole("link", { name: "Items" }).click();
@@ -54,8 +55,7 @@ test.describe("while the job runs", () => {
     await stubJob(page, job({ status: "claimed", claimedAt: new Date().toISOString() }));
     await page.goto("/");
     await hold(page, 900);
-    await expect(page.getByText("Camera took a photo")).toBeVisible();
-    await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+    await expect(page.getByText("The camera has a photo. Looking for it…")).toBeVisible();
     await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
   });
 
@@ -98,9 +98,10 @@ test.describe("the answer", () => {
     await hold(page, 900);
     const found = page.getByTestId("found");
     await expect(found).toBeVisible();
+    await page.getByTestId("next").click();
     await expect(found.getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
-    await expect(found).toContainText("91% sure");
-    await expect(found).toContainText("On the desk");
+    await expect(page.getByTestId("found-caption")).toContainText("91% sure");
+    await expect(page.getByTestId("found-caption")).toContainText("on the desk");
     await expect(page.getByTestId("answer")).toContainText(replies["reply-wallet"].text.split(" ").slice(0, 3).join(" "));
     await expect(page.getByTestId("reply-play")).toBeVisible();
   });
@@ -117,12 +118,7 @@ test.describe("the answer", () => {
       (window as unknown as { __t: number }).__t = t;
     }, at);
     await expect(page.locator("[data-current]")).toHaveText(expected);
-    // The narrator in the frame's corner speaks while the reply plays.
-    const narrator = page.getByRole("figure").filter({ has: page.getByAltText(/The narrator/) });
-    await expect(narrator).toHaveAttribute("data-speaking", "true");
-    await expect(narrator).toContainText("Speaking…");
-    await page.evaluate(() => document.querySelector("audio")!.dispatchEvent(new Event("pause")));
-    await expect(narrator).not.toHaveAttribute("data-speaking", "true");
+
   });
 
   test("autoplay blocked: the text shows and play starts it", async ({ page }) => {
@@ -151,10 +147,11 @@ test.describe("the answer", () => {
     );
     await page.goto("/");
     await hold(page, 900);
-    const notFound = page.getByTestId("not-found");
-    await expect(notFound).toContainText("Not in view right now");
-    await expect(notFound).toContainText("Last seen 3 h ago on the side table");
-    await expect(notFound.getByRole("link", { name: "See where the keys have been" })).toHaveAttribute("href", "/items/item-keys");
+    await expect(page.getByTestId("not-found")).toBeVisible();
+    await page.getByTestId("next").click();
+    const stage = page.getByTestId("stage");
+    await expect(stage).toContainText("Not in view · last seen 3 h ago on the side table");
+    await expect(stage.getByRole("link", { name: "See where the keys have been" })).toHaveAttribute("href", "/items/item-keys");
   });
 
   test("never seen: says so", async ({ page }) => {
@@ -170,7 +167,7 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   await stubJob(page, job({ status: "claimed", claimedAt: new Date().toISOString() }));
   await page.goto("/");
   await hold(page, 900);
-  await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+  await expect(page.getByText("The camera has a photo. Looking for it…")).toBeVisible();
   await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
   await page.waitForTimeout(600);
   const cogAnimations = await page.evaluate(
@@ -182,4 +179,78 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   await expect(page.getByTestId("found")).toBeVisible();
   expect(await page.locator("[data-lens-ring]").first().getAttribute("stroke-dasharray")).toBeNull();
   await expect(page.getByTestId("answer")).toBeVisible();
+});
+
+test("the camera view stays hidden until a question is asked", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("prompt")).toBeVisible();
+  await expect(page.getByTestId("camera-view")).toHaveCount(0);
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("camera-view")).toBeAttached();
+  await page.getByTestId("next").click();
+  await expect(page.getByTestId("found").getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
+});
+
+test("the ▼ skips to the camera's photo, and Narrator brings him back", async ({ page }) => {
+  await page.goto("/");
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  const photo = page.getByTestId("camera-view");
+  // He talks first, in his study.
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
+  await expect(photo).not.toHaveAttribute("data-shown", "true");
+  await page.getByRole("button", { name: "Show the camera's photo" }).click();
+  await expect(photo).toHaveAttribute("data-shown", "true");
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(0);
+  await expect(page.getByTestId("found-caption")).toBeVisible();
+  await page.getByTestId("back").click();
+  await expect(photo).not.toHaveAttribute("data-shown", "true");
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
+});
+
+test("after he finishes talking, the study fades and then the camera view takes over", async ({ page }) => {
+  await page.goto("/");
+  // No voice: the reply types out, then the sequence runs on its own.
+  await stubJob(page, foundWallet({ replyAudioUrl: null, replyTimings: null }));
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
+  await expect(page.getByTestId("camera-view")).toHaveAttribute("data-shown", "true", { timeout: 12_000 });
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(0);
+  await expect(page.getByTestId("found-caption")).toContainText("on the desk");
+});
+
+test("the narrator greets with a line from the pool, the next one on each reload", async ({ page }) => {
+  await page.goto("/");
+  const first = await expectGreeting(page);
+  await page.reload();
+  const second = await expectGreeting(page);
+  await page.reload();
+  const third = await expectGreeting(page);
+  const shown = [first, second, third].map((text) => GREETINGS.findIndex((g) => text.includes(g)));
+  expect(shown.every((i) => i >= 0)).toBe(true);
+  // In turn: each reload shows the line after the previous one.
+  expect(shown[1]).toBe((shown[0] + 1) % GREETINGS.length);
+  expect(shown[2]).toBe((shown[1] + 1) % GREETINGS.length);
+  await expect(page.getByTestId("dialogue")).not.toContainText("last thing seen");
+});
+
+test("the Ask page starts fresh after a reload or a visit to another page", async ({ page }) => {
+  await page.goto("/");
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await page.reload();
+  await expectGreeting(page);
+  await expect(page.getByTestId("answer")).toHaveCount(0);
+
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Items" }).click();
+  await expect(page).toHaveURL(/\/items$/);
+  await page.goBack();
+  await expectGreeting(page);
+  await expect(page.getByTestId("answer")).toHaveCount(0);
 });

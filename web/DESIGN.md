@@ -23,8 +23,9 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 
 | Screen | Question | Biggest thing |
 | --- | --- | --- |
-| Ask (`/`) | Where is it right now? | The talk control and, once answered, the photo with the lens |
+| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question he speaks his reply in the study; when he finishes, the study fades to reveal the camera photo behind him, then he and the box fade out, leaving the photo with the target circled. The bobbing ▼ (it dips on hover) skips ahead; "▲ Narrator" brings him back. The chat prompt sits at the bottom |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
+| History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |
 
 ## Theme devices allowed (and why)
@@ -36,20 +37,23 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 - **The cog train:** seven cogs in brass, dark brass, copper and iron that hop, turn and swell in a wave
   (anime.js `waapi.animate` with `stagger(75)`), shown only while a question is being worked on; still under
   reduced motion (`components/ctrlf/cog-train.tsx`).
-- **The flow-field background:** brass streams behind the frame, added at the team's request for a stronger
-  steampunk feel. This one is decoration, not information; it stays behind opaque panels so it never sits under text.
+- **The dot-field background:** a field of brass halftone dots behind the frame (Kokonut `dot-field`, with
+  `listenOnWindow` and `masked={false}` added) that drifts slowly, ripples under the cursor and rings out where you
+  click empty space. Decoration, not information: the sidebar has a paper backing and panels stay opaque, so it
+  never sits under text; clicks on controls never trigger it; still under reduced motion. It replaced the halftone
+  cogs, which replaced the earlier flow-field.
 
 ## The narrator
 
-A steampunk detective (deerstalker, brass goggles, pipe) is the face of the ElevenLabs voice that reads every
-answer. He stands in the bottom-right corner of the Ask section, in the page flow so he never covers content
-(`components/ctrlf/narrator.tsx`, image `public/narrator.png`). Before a question the right column holds only him;
-after an answer the telegram slip prints above him. He nods while a reply's audio plays and his caption reads
-"Speaking…". On phones he sits right-aligned under the Ask panel. Still under reduced motion.
+A steampunk detective (`public/narrator.png`) is the centre of the Ask page's visual-novel stage
+(`components/ctrlf/stage.tsx`): he stands in a brass-panelled study, and a dialogue box with a brass "Narrator" name
+tag speaks for him. Before a question he says one of three greetings from `lib/greetings.ts`, the next one on each
+reload. His reply's words appear as the audio speaks them (typed out when there is no audio; all at once
+under reduced motion, with the spoken word still marked).
 
 ## Kokonut components in use
 
-`ai-voice` (hold-to-talk), `ai-loading` (job stages), `receipt-printer` (telegram outcome slip),
+`ai-prompt` (the Ask page's prompt, with the three ways to ask), `ai-loading` (job stages),
 `synced-transcript` (spoken-word highlight, driven by real audio), `split-flap-text` (last seen),
 `contact-sheet` (history film strips with loupe), `flow-field` (background). `uptime-card`'s header pattern is used
 for the status area; the component itself was removed. Palette mapping: `scripts/restyle-kokonut.py`.

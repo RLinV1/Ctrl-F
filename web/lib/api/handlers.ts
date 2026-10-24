@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { SIGHTINGS_DEFAULT_LIMIT, SIGHTINGS_MAX_LIMIT, type Store } from "../data/store";
 import { audioExtension } from "../data/rules";
 import { zip } from "../zip";
@@ -8,9 +9,10 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const error = (message: string, status: number) => json({ error: message }, status);
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+export const MAX_QUESTION_CHARS = 300;
 
-/** The recording is the request body. It is transcribed and dropped: audio is never stored. */
-export async function postJob(store: Store, request: Request) {
+/** A recording as the request body, checked; or the error to answer with. */
+async function readRecording(request: Request): Promise<{ audio: Uint8Array; contentType: string } | Response> {
   const contentType = request.headers.get("content-type") ?? "";
   try {
     audioExtension(contentType);
@@ -20,12 +22,66 @@ export async function postJob(store: Store, request: Request) {
   const audio = new Uint8Array(await request.arrayBuffer());
   if (audio.byteLength === 0) return error("empty recording", 400);
   if (audio.byteLength > MAX_AUDIO_BYTES) return error("recording too long", 413);
+  return { audio, contentType };
+}
+
+async function queued(job: () => Promise<unknown>) {
   try {
-    return json(await store.createJob(audio, contentType), 201);
+    return json(await job(), 201);
   } catch (e) {
     console.error("[job]", e);
     return error("The request could not be queued.", 502);
   }
+}
+
+/**
+ * A spoken question: the recording is the request body. It is transcribed and dropped: audio is never stored.
+ * A typed question: a JSON body { text }, which is the transcript, so speech-to-text is skipped.
+ */
+export async function postJob(store: Store, request: Request) {
+  if (request.headers.get("content-type")?.startsWith("application/json")) {
+    let text: unknown;
+    try {
+      text = (await request.json())?.text;
+    } catch {
+      text = undefined;
+    }
+    if (typeof text !== "string" || !text.trim()) return error("text is required", 400);
+    if (text.trim().length > MAX_QUESTION_CHARS) return error(`text is longer than ${MAX_QUESTION_CHARS} characters`, 400);
+    return queued(() => store.askText(text.trim()));
+  }
+  const recording = await readRecording(request);
+  if (recording instanceof Response) return recording;
+  return queued(() => store.createJob(recording.audio, recording.contentType));
+}
+
+function tokenMatches(header: string | null, expected: string | undefined) {
+  if (!expected || !header?.startsWith("Bearer ")) return false;
+  const given = Buffer.from(header.slice("Bearer ".length));
+  const want = Buffer.from(expected);
+  return given.length === want.length && timingSafeEqual(given, want);
+}
+
+/**
+ * The camera's button: the Pi posts the recording from its own mic (raw audio body, audio/* content
+ * type, Pi token), and it is queued like a spoken question from the page. The Ask page picks it up
+ * through getLatestJob.
+ */
+export async function postDeviceJob(store: Store, request: Request, piToken: string | undefined) {
+  if (!tokenMatches(request.headers.get("authorization"), piToken)) return error("unauthorized", 401);
+  const recording = await readRecording(request);
+  if (recording instanceof Response) return recording;
+  return queued(() => store.createJob(recording.audio, recording.contentType, "device"));
+}
+
+/** The newest job from a source since a time, so the page can pick up camera-button questions. */
+export async function getLatestJob(store: Store, url: URL) {
+  const source = url.searchParams.get("source");
+  const since = url.searchParams.get("since") ?? "";
+  if (source !== "device" && source !== "web") return error("source must be device or web", 400);
+  if (Number.isNaN(Date.parse(since))) return error("since must be an ISO time", 400);
+  const id = await store.latestJobId(source, since);
+  return id ? json({ id }) : new Response(null, { status: 204 });
 }
 
 /** The spoken reply, kept in memory only. */
