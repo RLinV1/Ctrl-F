@@ -51,8 +51,12 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/stt":
                 audio = self._body()
                 extension = "mp3" if "mpeg" in self.headers.get("Content-Type", "") else "webm"
+                print(f"[stt] {len(audio)} bytes, {self.headers.get('Content-Type')}", flush=True)
+                if not audio:
+                    return self._json(400, {"error": "empty audio"})
                 started = time.perf_counter()
                 text = transcribe(audio, f"clip.{extension}", api_key)
+                print(f"[stt] heard: {text!r}", flush=True)
                 self._json(200, {"text": text, "seconds": round(time.perf_counter() - started, 1)})
             elif url.path == "/api/collect":
                 item = re.sub(r"[^a-z0-9_-]", "", parse_qs(url.query).get("item", [""])[0].lower())
@@ -65,6 +69,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json(404, {"error": "not found"})
         except SystemExit as error:  # transcribe/synthesize exit with the upstream error message
+            print(f"[error] {error}", flush=True)
             self._json(502, {"error": str(error)})
         except (KeyError, ValueError) as error:
             self._json(400, {"error": f"bad request: {error}"})
