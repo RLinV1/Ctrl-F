@@ -75,7 +75,6 @@ def process(key: str) -> None:
         detections = [{"name": result.names[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
                       for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
         facts = findings(requested_items(key), detections, list(result.names.values()))
-        facts["height"], facts["width"] = result.orig_shape  # the web app draws the match box over the jpg
         stem = f"results/{Path(key).stem}_result"
         s3.put_object(Bucket=BUCKET, Key=f"{stem}.json", Body=json.dumps(facts).encode())  # before the jpg: the jpg means "done"
         s3.upload_file(out, BUCKET, f"{stem}.jpg")
@@ -85,7 +84,6 @@ def process(key: str) -> None:
 def main() -> None:
     pages = s3.get_paginator("list_objects_v2")
     while True:
-        s3.put_object(Bucket=BUCKET, Key="heartbeat/desktop", Body=b"")  # the web app's "desktop online" light
         for page in pages.paginate(Bucket=BUCKET, Prefix="incoming/"):
             for obj in page.get("Contents", []):
                 key = obj["Key"]

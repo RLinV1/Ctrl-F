@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, KNOWN_ITEMS, narrate, pickTargets, type Detection, speak, transcribe, type Result } from "./narrate";
@@ -10,8 +10,8 @@ import type { Box, DeviceStatus, Item, JobView, Sighting, WordTime } from "./typ
 /*
  * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
  * jobs/ and read incoming/ and results/ (see docs/ARCHITECTURE.md). So:
- *   jobs/<id>.json                web -> Pi:  the job (items to find). Written here, deleted when the Pi claims it.
- *   incoming/<id>.json + .jpg     the Pi's photo and the items asked for
+ *   jobs/<id>.json                web -> Pi:  {"text", "targets"}. The Pi polls jobs/, claims a job by deleting it.
+ *   incoming/<id>.json + .jpg     the Pi's copy of the job and its photo; the processing server polls these
  *   results/<id>_result.json/jpg  the processing server's answer. The Items, History and Results screens are
  *                                 derived from these.
  *   results/heartbeat             optional: touched by the processing server, for the Desktop light
@@ -65,9 +65,7 @@ export class S3Store implements Store {
   private bucket = process.env.S3_BUCKET || "ctrlf-snapshots";
   private client: S3Client;
   private signer: S3Client;
-  private lastPi: number | null = null;
   private jobs = new Map<string, JobRec>();
-  private queue: string[] = [];
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
   private results: { at: number; rows: StoredResult[] } | null = null;
@@ -170,34 +168,19 @@ export class S3Store implements Store {
       unsupported,
     };
     if (targets.length) {
-      // The job goes to the bucket for the Pi; no items named means no photo is needed, and getJob answers it.
+      // The job goes to the bucket for the Pi to poll; no items named means no photo is needed, and getJob answers it.
       await this.client.send(
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: `jobs/${rec.id}.json`,
-          Body: JSON.stringify({ id: rec.id, targets, createdAt: rec.createdAt }),
+          Body: JSON.stringify({ text: transcript, targets }),
           ContentType: "application/json",
         }),
       );
-      this.queue.push(rec.id);
     }
     this.jobs.set(rec.id, rec);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
-  }
-
-  async claimNextJob() {
-    const id = this.queue.shift();
-    const rec = id ? this.jobs.get(id) : undefined;
-    if (!id || !rec) return null;
-    rec.status = "claimed";
-    // The job is taken: remove it from the bucket. A failed delete only leaves a stale object.
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: `jobs/${id}.json` })).catch((e) => console.error("[claim]", e));
-    return { id, targets: rec.targets };
-  }
-
-  async touchDevice() {
-    this.lastPi = Date.now();
   }
 
   async replyAudio(id: string) {
@@ -211,8 +194,15 @@ export class S3Store implements Store {
       // The jpg lands after the json, so both present means the processing server is done.
       // No targets means no photo is coming.
       if (!rec.targets.length || (await this.hasResult(id))) rec = await this.finish(rec);
+      else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed" });
     }
     return this.view(rec);
+  }
+
+  private update(rec: JobRec, change: Partial<JobRec>): JobRec {
+    const next = { ...rec, ...change };
+    this.jobs.set(rec.id, next);
+    return next;
   }
 
   private async hasResult(id: string) {
@@ -368,8 +358,9 @@ export class S3Store implements Store {
     return Promise.all(page.map((s) => this.sighting(s)));
   }
 
-  /** The Pi is online while it polls this server. The desktop is seen by its newest result or heartbeat object. */
+  /** Neither device talks to this server. The Pi is seen by its newest upload to incoming/, the desktop by its newest result or heartbeat object. */
   async deviceStatus(): Promise<DeviceStatus[]> {
+    const shot = Math.max(0, ...(await this.list("incoming/", 5000)).map((o) => +o.at)) || null;
     const beat = (await this.list("results/heartbeat", 10)).map((o) => +o.at);
     const done = (await this.recentResults())[0];
     const desktop = Math.max(0, ...beat, done ? Date.parse(done.at) : 0) || null;
@@ -378,7 +369,7 @@ export class S3Store implements Store {
       lastSeenAt: t ? new Date(t).toISOString() : null,
       online: t !== null && Date.now() - t <= ONLINE_MS[device],
     });
-    return [at("pi", this.lastPi), at("desktop", desktop)];
+    return [at("pi", shot), at("desktop", desktop)];
   }
 }
 

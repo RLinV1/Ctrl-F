@@ -10,9 +10,6 @@ export interface Store {
   createJob(audio: Uint8Array, contentType: string): Promise<JobView>;
   /** The spoken reply for a job, if this server still holds it. */
   replyAudio(id: string): Promise<Buffer | null>;
-  /** Oldest pending job for the Pi, now claimed, with the items to look for. */
-  claimNextJob(): Promise<{ id: string; targets: string[] } | null>;
-  touchDevice(device: "pi"): Promise<void>;
   /** Also narrates the job once the desktop has written its result. */
   getJob(id: string): Promise<JobView | null>;
   /** Newest first. Reads the records as they are: it does not narrate jobs that are still waiting. */

@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { SIGHTINGS_DEFAULT_LIMIT, SIGHTINGS_MAX_LIMIT, type Store } from "../data/store";
 import { audioExtension } from "../data/rules";
 
@@ -32,20 +31,6 @@ export async function postJob(store: Store, request: Request) {
 export async function getReplyAudio(store: Store, id: string) {
   const audio = await store.replyAudio(id);
   return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no reply audio", 404);
-}
-
-function tokenMatches(header: string | null, expected: string | undefined) {
-  if (!expected || !header?.startsWith("Bearer ")) return false;
-  const given = Buffer.from(header.slice("Bearer ".length));
-  const want = Buffer.from(expected);
-  return given.length === want.length && timingSafeEqual(given, want);
-}
-
-export async function getNextJob(store: Store, request: Request, piToken: string | undefined) {
-  if (!tokenMatches(request.headers.get("authorization"), piToken)) return error("unauthorized", 401);
-  await store.touchDevice("pi");
-  const claim = await store.claimNextJob();
-  return claim ? json(claim) : new Response(null, { status: 204 });
 }
 
 export async function getJob(store: Store, id: string) {

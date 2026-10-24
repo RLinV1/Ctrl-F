@@ -24,7 +24,7 @@ describe("narration helpers", () => {
     expect(facts).toMatchObject({ status: "found", item: "keys", where: "upper left", confidence_percent: 90 });
     expect(factsFor({ status: "not_visible", target: "keys", matches: [], detections: [] }, "3 h ago")).toMatchObject({
       status: "not_visible",
-      last_seen: "3 h ago",
+      last_seen_ago: "3 h ago",
     });
   });
 

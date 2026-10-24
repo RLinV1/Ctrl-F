@@ -29,7 +29,7 @@ Rules:
 - Report only what the JSON says. Never invent items, places, or objects that are not in it.
 - If "items" lists several things, say about each one in the order given, one short clause each.
 - Say plainly whether the item was found. If found, give where it is in the frame using the "where" field, and mention "next_to" if present.
-- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen" is present, say when it was last seen.
+- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen_ago" is present, say how long ago it was last seen, and never say where.
 - If status is "unsupported", say you cannot yet seek that item.
 - If status is "no_target", ask what they are looking for.
 - Always use the item's plain name (for example "phone", not a nickname). Never offer actions you cannot do, such as fetching or retrieving it.
@@ -79,7 +79,7 @@ export function factsFor(result: Result, lastSeen?: string | null) {
     Object.assign(facts, entry(result.target, result.status, result.matches, result.detections));
   }
   if (result.status === "no_target") facts.items_i_can_find = result.known ?? KNOWN_ITEMS;
-  if (lastSeen) facts.last_seen = lastSeen;
+  if (lastSeen) facts.last_seen_ago = lastSeen;
   return facts;
 }
 
