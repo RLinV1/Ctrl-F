@@ -99,7 +99,7 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
     const starts = answer!.replyTimings!.map((t) => t.start);
     const spoken = starts.filter((s) => s <= time).length;
     // Under reduced motion the whole reply shows at once; the spoken word is still marked.
-    if (!reduced) shown = playing || time > 0 ? Math.max(1, spoken) : total;
+    if (!reduced) shown = playing || time > 0 ? Math.max(1, spoken) : 0; // audio loaded but not started: show nothing yet
     current = playing ? spoken - 1 : -1;
   } else if (!timed && !reduced && !ended) {
     shown = typed;
