@@ -350,7 +350,7 @@ export function AskPanel() {
         {/* Reserves his corner, so content never runs under him on wider screens. */}
         <div aria-hidden className="mt-auto hidden h-[400px] md:block" />
         <Narrator
-          className="ml-auto w-56 md:absolute md:right-0 md:bottom-0 md:w-[340px] md:max-w-none"
+          className="ml-auto w-56 md:pointer-events-none md:fixed md:right-0 md:bottom-0 md:z-30 md:w-[340px] md:max-w-none"
           speaking={speaking}
         />
       </div>
