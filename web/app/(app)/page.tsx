@@ -10,7 +10,7 @@ const HOUR = 60 * 60_000;
 export default function AskPage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 pt-10 pb-16 md:px-8 md:pt-[72px]">
-      <Suspense fallback={<Greeting />}>
+      <Suspense fallback={<OverviewFallback />}>
         <Overview />
       </Suspense>
       <div className="mt-4">
@@ -30,6 +30,20 @@ function Greeting({ fact }: { fact?: string }) {
         {fact === undefined ? "Ctrl-F" : greetingNow()}
       </h1>
       <p className="mt-3 text-[17px] text-ink-muted">{fact ?? "Checking what the camera has seen…"}</p>
+    </>
+  );
+}
+
+/** Same size as the overview, so the Ask panel does not move when the data streams in. */
+function OverviewFallback() {
+  return (
+    <>
+      <Greeting />
+      <ul aria-hidden className="mt-[50px] grid grid-cols-2 gap-4 md:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <li className="min-h-[128px] bg-panel" key={i} />
+        ))}
+      </ul>
     </>
   );
 }

@@ -10,6 +10,7 @@ import type { JobView } from "@/lib/data/types";
 import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
 import { useDeviceStatus } from "./device-status";
 import { Gear } from "./gear";
+import { useNarrator } from "./narrator";
 import { SnapshotFrame } from "./snapshot-frame";
 
 export const POLL_MS = 750;
@@ -39,10 +40,47 @@ function useRecorder() {
   const [permission, setMic] = useState<Mic>("unknown");
   const mic: Mic = supported ? permission : "unavailable";
   const [level, setLevel] = useState(0);
-  const streamRef = useRef<MediaStream | null>(null);
+  const streamRef = useRef<Promise<MediaStream | null> | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const rafRef = useRef(0);
+
+  /** Opens the microphone once; the first hold and the pre-warm share one request. */
+  const ensureStream = useCallback(() => {
+    streamRef.current ??= (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMic("ready");
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        let shown = 0;
+        const tick = () => {
+          // Only while recording: the level drives the waveform, nothing else needs it.
+          if (recorderRef.current) {
+            analyser.getByteTimeDomainData(data);
+            let peak = 0;
+            for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+            shown = Math.min(1, (peak / 128) * 2.2);
+            setLevel(shown);
+          } else if (shown !== 0) {
+            shown = 0;
+            setLevel(0);
+          }
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+        return stream;
+      } catch (error) {
+        streamRef.current = null;
+        setMic((error as DOMException)?.name === "NotAllowedError" ? "denied" : "unavailable");
+        return null;
+      }
+    })();
+    return streamRef.current;
+  }, []);
 
   useEffect(() => {
     if (!canRecord()) return;
@@ -50,40 +88,16 @@ function useRecorder() {
       ?.query({ name: "microphone" as PermissionName })
       .then((p) => {
         if (p.state === "denied") setMic("denied");
+        // Already allowed: open it now, so the first hold records from its first moment.
+        if (p.state === "granted") ensureStream();
         p.onchange = () => setMic(p.state === "denied" ? "denied" : "unknown");
       })
       .catch(() => undefined);
     return () => {
       cancelAnimationFrame(rafRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current?.then((stream) => stream?.getTracks().forEach((t) => t.stop()));
     };
-  }, []);
-
-  const ensureStream = useCallback(async () => {
-    if (streamRef.current) return streamRef.current;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      setMic("ready");
-      const ctx = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
-      const tick = () => {
-        analyser.getByteTimeDomainData(data);
-        let peak = 0;
-        for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
-        setLevel(Math.min(1, (peak / 128) * 2.2));
-        rafRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-      return stream;
-    } catch (error) {
-      setMic((error as DOMException)?.name === "NotAllowedError" ? "denied" : "unavailable");
-      return null;
-    }
-  }, []);
+  }, [ensureStream]);
 
   const start = useCallback(async () => {
     const stream = await ensureStream();
@@ -165,6 +179,7 @@ export function AskPanel() {
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [blocked, setBlocked] = useState(false);
+  const { setSpeaking } = useNarrator();
   const holdRef = useRef<Promise<boolean> | null>(null);
 
   // Poll the job until it is answered, failed, or stale.
@@ -207,8 +222,13 @@ export function AskPanel() {
     holdRef.current = null;
     const blob = await stop();
     if (!started) return setPhase({ kind: "idle" });
-    if (seconds < MIN_HOLD_S || !blob || blob.size === 0) {
+    if (seconds < MIN_HOLD_S) {
       return setPhase({ kind: "idle", hint: "Hold the button down while you speak, then let go." });
+    }
+    if (!blob || blob.size === 0) {
+      // A long hold that caught nothing: the microphone was still opening (the first time, the
+      // browser asks for permission while the button is held).
+      return setPhase({ kind: "idle", hint: "The microphone was still starting. Hold the button and ask again." });
     }
     setPhase({ kind: "sending" });
     try {
@@ -304,6 +324,7 @@ export function AskPanel() {
                   className="mt-2"
                   key={answer.id}
                   onAutoplayBlocked={() => setBlocked(true)}
+                  onPlayingChange={setSpeaking}
                   src={answer.replyAudioUrl}
                   text={answer.replyText ?? ""}
                   timings={answer.replyTimings}

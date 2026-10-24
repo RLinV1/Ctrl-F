@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 export const TEST_PASSWORD = "brass-test";
 export const TEST_PI_TOKEN = "pi-test";
@@ -79,9 +79,10 @@ export async function stubStatus(page: Page, pi: boolean, desktop = true) {
   );
 }
 
-/** Waits until client components are live: the status panel fetches on mount. */
+/** Waits until the talk control is hydrated; parts of a page hydrate separately. */
 export async function hydrated(page: Page) {
-  await page.getByRole("region", { name: "Status" }).getByText(/online|offline|not seen/).first().waitFor();
+  await page.locator('[data-testid="talk"][data-live]').waitFor();
+  await page.getByText("Items tracked").waitFor();
 }
 
 /** Press and hold the talk control with the mouse for `ms`. */
@@ -91,6 +92,7 @@ export async function hold(page: Page, ms: number) {
   const box = (await talk.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
+  await expect(talk, "the press reached the talk control").toHaveAttribute("aria-pressed", "true");
   await page.waitForTimeout(ms);
   await page.mouse.up();
 }

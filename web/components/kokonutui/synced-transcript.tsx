@@ -48,6 +48,8 @@ export interface SyncedTranscriptProps {
   autoPlay?: boolean;
   /** Called when the browser refuses autoplay. */
   onAutoplayBlocked?: () => void;
+  /** Ctrl-F: told when the audio starts and stops, so the narrator can speak. */
+  onPlayingChange?: (playing: boolean) => void;
   className?: string;
 }
 
@@ -70,6 +72,7 @@ export default function SyncedTranscript({
   timings,
   autoPlay = true,
   onAutoplayBlocked,
+  onPlayingChange,
   className,
 }: SyncedTranscriptProps) {
   const words: Word[] = useMemo(
@@ -110,6 +113,11 @@ export default function SyncedTranscript({
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = rate;
   }, [rate]);
+
+  useEffect(() => {
+    onPlayingChange?.(playing);
+  }, [playing, onPlayingChange]);
+  useEffect(() => () => onPlayingChange?.(false), [onPlayingChange]);
 
   // One autoplay attempt per reply.
   useEffect(() => {

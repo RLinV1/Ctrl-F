@@ -16,7 +16,7 @@
 
 import { Mic } from "lucide-react";
 import { useReducedMotion } from "motion/react";
-import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 
 const BAR_COUNT = 48;
@@ -68,6 +68,12 @@ export default function AI_Voice({
   onHoldEnd,
 }: AIVoiceProps) {
   const [seconds, setSeconds] = useState(0);
+  // True once this control is hydrated and its handlers are live (false in the server HTML).
+  const live = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const shouldReduceMotion = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -174,6 +180,7 @@ export default function AI_Voice({
               recording ? "bg-brass text-ink" : "bg-ink text-paper hover:bg-ink/85",
               disabled && "cursor-not-allowed opacity-50 hover:bg-ink",
             )}
+            data-live={live || undefined}
             data-testid="talk"
             onContextMenu={(e) => e.preventDefault()}
             onKeyDown={onKeyDown}

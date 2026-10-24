@@ -107,6 +107,12 @@ test.describe("the answer", () => {
       (window as unknown as { __t: number }).__t = t;
     }, at);
     await expect(page.locator("[data-current]")).toHaveText(expected);
+    // The narrator in the frame's corner speaks while the reply plays.
+    const narrator = page.getByRole("figure").filter({ has: page.getByAltText(/The narrator/) });
+    await expect(narrator).toHaveAttribute("data-speaking", "true");
+    await expect(narrator).toContainText("Speaking…");
+    await page.evaluate(() => document.querySelector("audio")!.dispatchEvent(new Event("pause")));
+    await expect(narrator).not.toHaveAttribute("data-speaking", "true");
   });
 
   test("autoplay blocked: the text shows and play starts it", async ({ page }) => {

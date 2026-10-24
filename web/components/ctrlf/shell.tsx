@@ -8,6 +8,7 @@ import FlowField from "@/components/kokonutui/flow-field";
 import { cn } from "@/lib/utils";
 import { DeviceStatusPanel } from "./device-status";
 import { Mark } from "./mark";
+import { Narrator, NarratorProvider } from "./narrator";
 
 const NAV = [
   { href: "/", label: "Ask" },
@@ -88,6 +89,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
   );
 
   return (
+    <NarratorProvider>
     <div className="relative isolate min-h-dvh bg-paper md:flex">
       {/* Brass streams drifting behind the frame, like steam through the works. Fixed to the
           window; still under reduced motion. The sheet lets them show faintly between panels. */}
@@ -95,6 +97,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
       <aside className="hidden w-[228px] shrink-0 flex-col px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
         {brand}
         {nav}
+        <Narrator className="mt-auto mb-6 w-[168px]" />
         {footer}
       </aside>
 
@@ -122,5 +125,6 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
         {children}
       </main>
     </div>
+    </NarratorProvider>
   );
 }

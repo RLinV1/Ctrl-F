@@ -37,6 +37,13 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 - **The flow-field background:** brass streams behind the frame, added at the team's request for a stronger
   steampunk feel. This one is decoration, not information; it stays behind opaque panels so it never sits under text.
 
+## The narrator
+
+A steampunk detective (deerstalker, brass goggles, pipe) is the face of the ElevenLabs voice that reads every
+answer. He sits in the frame's lower-left corner above the status gauges on every screen (`components/ctrlf/narrator.tsx`,
+image `public/narrator.png`), nods while a reply's audio plays, and his caption reads "Speaking…". Hidden on phones,
+where there is no sidebar. Still under reduced motion.
+
 ## Kokonut components in use
 
 `ai-voice` (hold-to-talk), `ai-loading` (job stages), `receipt-printer` (telegram outcome slip),

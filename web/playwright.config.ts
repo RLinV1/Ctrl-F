@@ -30,6 +30,7 @@ export default defineConfig({
   // Each page animates a full-window canvas (the flow-field background); more parallel
   // browsers than this starve each other and push holds past their timeouts.
   workers: 3,
+  expect: { timeout: 10_000 },
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: { trace: "retain-on-failure" },
