@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const TEETH = 10;
 
-function gearPath(r: number, depth: number) {
+export function gearPath(r: number, depth: number) {
   const points: string[] = [];
   for (let i = 0; i < TEETH * 2; i++) {
     const a0 = (i / (TEETH * 2)) * Math.PI * 2;

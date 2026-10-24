@@ -9,7 +9,7 @@ import SyncedTranscript from "@/components/kokonutui/synced-transcript";
 import type { JobView } from "@/lib/data/types";
 import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
 import { useDeviceStatus } from "./device-status";
-import { Gear } from "./gear";
+import { CogTrain } from "./cog-train";
 import { Narrator } from "./narrator";
 import { SnapshotFrame } from "./snapshot-frame";
 
@@ -296,8 +296,8 @@ export function AskPanel() {
               </p>
             )}
             {working && (
-              <div className="flex items-start gap-3">
-                <Gear className="mt-1" turning />
+              <div>
+                <CogTrain className="mb-3" />
                 <AILoadingState
                   className="justify-start"
                   collapseWhenDone={false}

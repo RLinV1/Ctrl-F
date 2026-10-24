@@ -56,6 +56,22 @@ test.describe("while the job runs", () => {
     await hold(page, 900);
     await expect(page.getByText("Camera took a photo")).toBeVisible();
     await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
+  });
+
+  test("the cogs run while the job is worked on", async ({ page }, info) => {
+    test.skip(info.project.name === "reduced-motion", "cogs stand still under reduced motion");
+    await stubJob(page, job({ status: "claimed", claimedAt: new Date().toISOString() }));
+    await page.goto("/");
+    await hold(page, 900);
+    await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.getAnimations().filter((x) => (x.effect as KeyframeEffect | null)?.target?.hasAttribute("data-cog")).length,
+        ),
+      )
+      .toBeGreaterThan(0);
   });
 
   test("says the camera is offline when the job goes stale", async ({ page }) => {
@@ -161,8 +177,12 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   await page.goto("/");
   await hold(page, 900);
   await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
   await page.waitForTimeout(600);
-  expect(await page.locator("[data-gear]").evaluate((g) => (g as SVGElement).style.transform)).toBe("");
+  const cogAnimations = await page.evaluate(
+    () => document.getAnimations().filter((x) => (x.effect as KeyframeEffect | null)?.target?.hasAttribute("data-cog")).length,
+  );
+  expect(cogAnimations).toBe(0);
   await page.unroute(/\/api\/jobs\/(?!next)[^/]+$/);
   await stubJob(page, foundWallet());
   await expect(page.getByTestId("found")).toBeVisible();

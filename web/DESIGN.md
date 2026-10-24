@@ -33,7 +33,9 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 
 - **The lens:** a brass ring with a paper outline around the matched item; it is the answer. Drawn by anime.js.
 - **Gauges:** each device's freshness, and detection confidence. The words always say it too.
-- **The turning gear:** shown only while a job is in progress; still under reduced motion.
+- **The cog train:** seven cogs in brass, dark brass, copper and iron that hop, turn and swell in a wave
+  (anime.js `waapi.animate` with `stagger(75)`), shown only while a question is being worked on; still under
+  reduced motion (`components/ctrlf/cog-train.tsx`).
 - **The flow-field background:** brass streams behind the frame, added at the team's request for a stronger
   steampunk feel. This one is decoration, not information; it stays behind opaque panels so it never sits under text.
 
