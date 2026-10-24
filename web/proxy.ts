@@ -3,9 +3,9 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
 /**
  * The password gate. Off when UI_PASSWORD is unset. Screens without a session go to
- * sign-in; API routes answer 401. The Pi's /api/jobs/next is excluded here and checks
- * its own bearer token, so a UI session never works there and the Pi token never
- * works anywhere else.
+ * sign-in; API routes answer 401. The Pi's /api/device/jobs is excluded here and checks
+ * its own bearer token, so a UI session never works there and the Pi token never works
+ * anywhere else.
  */
 export function proxy(request: NextRequest) {
   const password = process.env.UI_PASSWORD;
@@ -22,5 +22,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|sign-in|api/session|api/jobs/next|api/device).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sign-in|api/session|api/device).*)"],
 };

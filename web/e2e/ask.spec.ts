@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chooseMode, expectGreeting, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, stubStatus, typeQuestion } from "./fixtures";
+import { chooseMode, expectGreeting, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, typeQuestion } from "./fixtures";
 import { GREETINGS } from "../lib/greetings";
 
 test.describe("push-to-talk", () => {
@@ -89,14 +89,6 @@ test.describe("while the job runs", () => {
     await expect(page.getByText("Speech-to-text failed.")).toBeVisible();
   });
 
-  test("warns beside the control when a device is offline", async ({ page }) => {
-    await stubStatus(page, false);
-    await page.goto("/");
-    await expect(page.getByTestId("offline-warning")).toContainText("The camera is offline");
-    // Asking still works; the question waits for the camera.
-    await page.getByLabel("What are you looking for?").fill("where is my wallet");
-    await expect(page.getByTestId("send")).toBeEnabled();
-  });
 });
 
 test.describe("the answer", () => {

@@ -34,12 +34,6 @@ test("API routes answer 401 without a session, even with the Pi token", async ({
   expect(withPi.status()).toBe(401);
 });
 
-test("the Pi endpoint ignores the gate and checks its own token", async ({ request }) => {
-  expect((await request.get("/api/jobs/next")).status()).toBe(401);
-  const pi = await request.get("/api/jobs/next", { headers: { authorization: `Bearer ${TEST_PI_TOKEN}` } });
-  expect([200, 204]).toContain(pi.status());
-});
-
 test("the camera's upload endpoint skips the gate and checks the Pi token", async ({ request }) => {
   const audio = { "content-type": "audio/webm" };
   expect((await request.post("/api/device/jobs", { headers: audio, data: Buffer.from([1, 2, 3]) })).status()).toBe(401);

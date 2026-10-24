@@ -34,6 +34,7 @@ See `.env.example`. Real `.env` files are git-ignored.
 
 ```
 GEMINI_API_KEY
+GEMINI_MODEL                # optional, default gemini-flash-lite-latest
 ELEVENLABS_API_KEY
 ELEVENLABS_VOICE_ID
 DATABASE_URL              # e.g. postgresql://ctrlf:ctrlf@localhost:5432/ctrlf

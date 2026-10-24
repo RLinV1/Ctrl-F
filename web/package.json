@@ -11,6 +11,8 @@
     "test:e2e": "next build && playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "animejs": "^4.5.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",

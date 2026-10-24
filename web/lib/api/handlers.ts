@@ -1,48 +1,57 @@
 import { timingSafeEqual } from "node:crypto";
 import { SIGHTINGS_DEFAULT_LIMIT, SIGHTINGS_MAX_LIMIT, type Store } from "../data/store";
-import { audioExtension, audioKeyFor } from "../data/rules";
-
-export const MAX_QUESTION_CHARS = 300;
-export const MAX_DEVICE_AUDIO_BYTES = 10 * 1024 * 1024;
+import { audioExtension } from "../data/rules";
 
 /** Route logic as plain functions of a Store, so tests can call them without Next. */
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const error = (message: string, status: number) => json({ error: message }, status);
 
-async function readJson(request: Request): Promise<Record<string, unknown> | null> {
-  try {
-    const body = await request.json();
-    return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+export const MAX_QUESTION_CHARS = 300;
 
-export async function postUpload(store: Store, request: Request) {
-  const body = await readJson(request);
-  const contentType = typeof body?.contentType === "string" ? body.contentType : "";
+/** A recording as the request body, checked; or the error to answer with. */
+async function readRecording(request: Request): Promise<{ audio: Uint8Array; contentType: string } | Response> {
+  const contentType = request.headers.get("content-type") ?? "";
   try {
     audioExtension(contentType);
   } catch {
-    return error("contentType must be audio/webm, audio/mp4 or audio/ogg", 400);
+    return error("content-type must be audio/webm, audio/mp4 or audio/ogg", 400);
   }
-  return json(await store.createUploadSlot(contentType), 201);
+  const audio = new Uint8Array(await request.arrayBuffer());
+  if (audio.byteLength === 0) return error("empty recording", 400);
+  if (audio.byteLength > MAX_AUDIO_BYTES) return error("recording too long", 413);
+  return { audio, contentType };
 }
 
-/** A spoken question ({ audioKey } of stored audio) or a typed one ({ text }). */
-export async function postJob(store: Store, request: Request) {
-  const body = await readJson(request);
-  if (typeof body?.text === "string") {
-    const text = body.text.trim();
-    if (!text) return error("text is empty", 400);
-    if (text.length > MAX_QUESTION_CHARS) return error(`text is longer than ${MAX_QUESTION_CHARS} characters`, 400);
-    return json(await store.createJob({ text }, "web"), 201);
+async function queued(job: () => Promise<unknown>) {
+  try {
+    return json(await job(), 201);
+  } catch (e) {
+    console.error("[job]", e);
+    return error("The request could not be queued.", 502);
   }
-  const audioKey = typeof body?.audioKey === "string" ? body.audioKey : "";
-  if (!audioKey.startsWith("audio/")) return error("audioKey is required", 400);
-  if (!(await store.audioExists(audioKey))) return error("no audio stored at audioKey", 400);
-  return json(await store.createJob({ audioKey }, "web"), 201);
+}
+
+/**
+ * A spoken question: the recording is the request body. It is transcribed and dropped: audio is never stored.
+ * A typed question: a JSON body { text }, which is the transcript, so speech-to-text is skipped.
+ */
+export async function postJob(store: Store, request: Request) {
+  if (request.headers.get("content-type")?.startsWith("application/json")) {
+    let text: unknown;
+    try {
+      text = (await request.json())?.text;
+    } catch {
+      text = undefined;
+    }
+    if (typeof text !== "string" || !text.trim()) return error("text is required", 400);
+    if (text.trim().length > MAX_QUESTION_CHARS) return error(`text is longer than ${MAX_QUESTION_CHARS} characters`, 400);
+    return queued(() => store.askText(text.trim()));
+  }
+  const recording = await readRecording(request);
+  if (recording instanceof Response) return recording;
+  return queued(() => store.createJob(recording.audio, recording.contentType));
 }
 
 function tokenMatches(header: string | null, expected: string | undefined) {
@@ -52,33 +61,16 @@ function tokenMatches(header: string | null, expected: string | undefined) {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-export async function getNextJob(store: Store, request: Request, piToken: string | undefined) {
-  if (!tokenMatches(request.headers.get("authorization"), piToken)) return error("unauthorized", 401);
-  await store.touchDevice("pi");
-  const id = await store.claimNextJob();
-  return id ? json({ id }) : new Response(null, { status: 204 });
-}
-
 /**
- * The camera's button: the Pi posts the recording from its own mic (raw audio body,
- * audio/* content type, Pi token). The audio is stored and a job is queued; the Pi
- * then claims it from /api/jobs/next like any other.
+ * The camera's button: the Pi posts the recording from its own mic (raw audio body, audio/* content
+ * type, Pi token), and it is queued like a spoken question from the page. The Ask page picks it up
+ * through getLatestJob.
  */
 export async function postDeviceJob(store: Store, request: Request, piToken: string | undefined) {
   if (!tokenMatches(request.headers.get("authorization"), piToken)) return error("unauthorized", 401);
-  const contentType = request.headers.get("content-type")?.split(";")[0].trim() ?? "";
-  try {
-    audioExtension(contentType);
-  } catch {
-    return error("content-type must be audio/webm, audio/mp4 or audio/ogg", 400);
-  }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength === 0) return error("empty recording", 400);
-  if (bytes.byteLength > MAX_DEVICE_AUDIO_BYTES) return error("recording is too large", 413);
-  await store.touchDevice("pi");
-  const audioKey = audioKeyFor(contentType, new Date(), crypto.randomUUID());
-  await store.putAudio(audioKey, bytes, contentType);
-  return json(await store.createJob({ audioKey }, "device"), 201);
+  const recording = await readRecording(request);
+  if (recording instanceof Response) return recording;
+  return queued(() => store.createJob(recording.audio, recording.contentType, "device"));
 }
 
 /** The newest job from a source since a time, so the page can pick up camera-button questions. */
@@ -89,6 +81,26 @@ export async function getLatestJob(store: Store, url: URL) {
   if (Number.isNaN(Date.parse(since))) return error("since must be an ISO time", 400);
   const id = await store.latestJobId(source, since);
   return id ? json({ id }) : new Response(null, { status: 204 });
+}
+
+/** The spoken reply, kept in memory only. */
+export async function getReplyAudio(store: Store, id: string) {
+  const audio = await store.replyAudio(id);
+  return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no reply audio", 404);
+}
+
+export async function postCorrection(store: Store, id: string, request: Request) {
+  let found: unknown;
+  try {
+    found = (await request.json())?.found;
+  } catch {
+    found = undefined;
+  }
+  if (typeof found !== "boolean") return error("found must be true or false", 400);
+  const job = await store.correctJob(id, found);
+  if (job === null) return error("job not found", 404);
+  if (job === "conflict") return error("this job has no verdict to correct", 409);
+  return json(job);
 }
 
 export async function getJob(store: Store, id: string) {

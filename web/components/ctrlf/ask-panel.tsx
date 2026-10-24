@@ -18,7 +18,7 @@ const MODES: PromptMode[] = [
   { id: "camera", name: "Camera button", description: "Press the camera's button and use its mic", icon: <Camera /> },
 ];
 
-export const POLL_MS = 750;
+export const POLL_MS = 400;
 export const MIN_HOLD_S = 0.5;
 
 type Mic = "unknown" | "ready" | "denied" | "unavailable";
@@ -104,17 +104,34 @@ function useRecorder() {
     };
   }, [ensureStream]);
 
+  /** Tries each recording format on a stream. Some browsers accept a MIME type in isTypeSupported but fail to start with it. */
+  const tryRecord = useCallback((stream: MediaStream) => {
+    for (const mimeType of [pickMimeType(), ""]) {
+      try {
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        chunksRef.current = [];
+        recorder.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
+        recorder.start(100);
+        recorderRef.current = recorder;
+        return true;
+      } catch (error) {
+        console.error("[mic]", mimeType || "default type", error);
+      }
+    }
+    return false;
+  }, []);
+
   const start = useCallback(async () => {
-    const stream = await ensureStream();
-    if (!stream) return false;
-    const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    chunksRef.current = [];
-    recorder.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
-    recorder.start(100);
-    recorderRef.current = recorder;
-    return true;
-  }, [ensureStream]);
+    // A stream whose tracks ended (device switched, another app took the mic) cannot record; open a fresh one.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stream = await ensureStream();
+      if (!stream) return false;
+      if (stream.getAudioTracks().some((t) => t.readyState === "live") && tryRecord(stream)) return true;
+      streamRef.current = null;
+      stream.getTracks().forEach((t) => t.stop());
+    }
+    return false;
+  }, [ensureStream, tryRecord]);
 
   const stop = useCallback(
     () =>
@@ -133,22 +150,9 @@ function useRecorder() {
 
 async function submit(blob: Blob): Promise<string> {
   const contentType = blob.type.split(";")[0] || "audio/webm";
-  const slotRes = await fetch("/api/uploads", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contentType }),
-  });
-  if (!slotRes.ok) throw new Error("Could not get an upload slot.");
-  const slot: { audioKey: string; uploadUrl: string } = await slotRes.json();
-  const put = await fetch(slot.uploadUrl, { method: "PUT", headers: { "content-type": contentType }, body: blob });
-  if (!put.ok) throw new Error("The recording did not upload.");
-  const jobRes = await fetch("/api/jobs", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ audioKey: slot.audioKey }),
-  });
-  if (!jobRes.ok) throw new Error("The request was not accepted.");
-  return (await jobRes.json()).id;
+  const res = await fetch("/api/jobs", { method: "POST", headers: { "content-type": contentType }, body: blob });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "The request was not accepted.");
+  return (await res.json()).id;
 }
 
 // One greeting per page load: picked the first time it is read in the browser, then kept.
@@ -223,6 +227,23 @@ function AskSession() {
     };
   }, [jobId]);
 
+  // The answer shows as soon as its text is ready; fetch again until the spoken reply (audio and word times) is too.
+  useEffect(() => {
+    if (phase.kind !== "answered" || !phase.job.replyPending) return;
+    const id = phase.job.id;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const job: JobView = await res.json();
+        setPhase((p) => (p.kind === "answered" && p.job.id === id ? { ...p, job } : p));
+      } catch {
+        // the next change of phase tries again
+      }
+    }, POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
   const onHoldStart = () => {
     setPhase({ kind: "recording" });
     holdRef.current = start();
@@ -232,7 +253,7 @@ function AskSession() {
     const started = await holdRef.current;
     holdRef.current = null;
     const blob = await stop();
-    if (!started) return setPhase({ kind: "idle" });
+    if (!started) return setPhase({ kind: "idle", hint: "The microphone could not start. Hold the button and try again." });
     if (seconds < MIN_HOLD_S) {
       return setPhase({ kind: "idle", hint: "Hold the button down while you speak, then let go." });
     }
@@ -270,8 +291,18 @@ function AskSession() {
     setPhase({ kind: "waiting", job: null, jobId: id });
   }, []);
 
-  const offline = status?.filter((s) => !s.online) ?? [];
-  const cameraOffline = offline.some((d) => d.device === "pi");
+  const cameraOffline = status?.some((d) => d.device === "pi" && !d.online) ?? false;
+
+  const correct = async (found: boolean) => {
+    if (phase.kind !== "answered") return;
+    const res = await fetch(`/api/jobs/${phase.job.id}/correct`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ found }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    setPhase({ kind: "answered", job: await res.json(), at: Date.now() });
+  };
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
@@ -329,7 +360,8 @@ function AskSession() {
         <Stage
           answer={answer}
           answeredAt={phase.kind === "answered" ? phase.at : 0}
-          key={answer?.id ?? "idle"}
+          aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
+          key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
           line={line}
           working={working}
         />
@@ -346,13 +378,6 @@ function AskSession() {
         textMode="type"
       />
 
-      {offline.length > 0 && (
-        <p className="text-copper text-sm" data-testid="offline-warning">
-          {cameraOffline
-            ? "The camera is offline. Your question will wait until it is back."
-            : "The desktop is offline. Answers will be delayed until it is back."}
-        </p>
-      )}
       {mode === "speak" && mic === "denied" && (
         <p className="text-copper text-sm" role="alert">
           The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then reload, or
@@ -368,5 +393,35 @@ function AskSession() {
       </div>
 
     </div>
+  );
+}
+
+/** Optional: the user disagrees with the camera's verdict. */
+function CorrectPrompt({ job, onCorrect }: { job: JobView; onCorrect: (found: boolean) => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  if (job.found === null) return null;
+  const flip = !job.found;
+  const name = job.target ?? "item";
+  const is = name.endsWith("s") ? "are" : "is"; // "the keys are", "the wallet is"
+  return (
+    <p className="mt-3 text-[15px]" data-testid="correction">
+      <span className="text-ink-muted">{job.corrected ? "Corrected by you. " : "Not right? "}</span>
+      <button
+        className="underline underline-offset-4 hover:text-copper disabled:opacity-50"
+        disabled={state === "busy"}
+        onClick={async () => {
+          setState("busy");
+          try {
+            await onCorrect(flip);
+          } catch {
+            setState("failed");
+          }
+        }}
+        type="button"
+      >
+        {flip ? `The ${name} ${is} in the photo` : `The ${name} ${is} not in the photo`}
+      </button>
+      {state === "failed" && <span className="ml-2 text-copper">That could not be saved.</span>}
+    </p>
   );
 }

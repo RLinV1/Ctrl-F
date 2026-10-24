@@ -7,7 +7,7 @@
 *.pt
 *.onnx
 datasets/
-data/
+/data/
 runs/
 
 # Python

@@ -3,7 +3,7 @@
 import { Pause, Play } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import type { JobView, Sighting } from "@/lib/data/types";
+import type { Box, JobView, Snapshot } from "@/lib/data/types";
 import { percent, placeWords, relativeTime } from "@/lib/format";
 import { prefersReducedMotion } from "@/lib/motion/use-anime";
 import { cn } from "@/lib/utils";
@@ -42,10 +42,17 @@ function Backdrop() {
   );
 }
 
-function photoOf(answer: JobView | null): Sighting | null {
+type StagePhoto = { snapshot: Snapshot; lens: { box: Box; confidence?: number } | null };
+
+/** The photo behind the narrator: the item circled where it was found, else the camera's photo for this question, else the last photo of the item. */
+function photoOf(answer: JobView | null): StagePhoto | null {
   if (!answer) return null;
-  if (answer.found && answer.match) return answer.match;
-  return answer.lastSighting;
+  if (answer.found && answer.match) {
+    return { snapshot: answer.match.snapshot, lens: { box: answer.match.box, confidence: answer.match.confidence } };
+  }
+  if (answer.photo) return { snapshot: answer.photo, lens: null };
+  if (answer.lastSighting) return { snapshot: answer.lastSighting.snapshot, lens: { box: answer.lastSighting.box } };
+  return null;
 }
 
 /** Words of the reply, revealed as they are spoken (timed), typed out (no audio), or all at once. */
@@ -93,8 +100,9 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
   } else if (!timed && !reduced && !ended) {
     shown = typed;
   }
-  // Finished: the voice ended, or (with no voice) the last word has been typed.
-  const done = timed ? ended : total > 0 && (reduced || typed >= total);
+  // Finished: the voice ended, or (with no voice) the last word has been typed. While the
+  // voice is still being made, he is not finished: it may yet arrive and be played.
+  const done = !answer?.replyPending && (timed ? ended : total > 0 && (reduced || typed >= total));
   return { words, shown, current, done, onEnded: () => setEnded(true) };
 }
 
@@ -125,9 +133,10 @@ export function Stage({
   const { words, shown, current, done, onEnded } = useReveal(answer, audioRef, playing, blocked);
   const autoPlayed = useRef(false);
   const hasVoice = Boolean(answer?.replyAudioUrl);
+  const hasPhoto = Boolean(photo);
   useEffect(() => {
     // Once per answer, and not when the browser blocked the voice (the text must stay readable).
-    if (!(photo && done && !blocked) || autoPlayed.current) return;
+    if (!(hasPhoto && done && !blocked) || autoPlayed.current) return;
     autoPlayed.current = true;
     const reveal = window.setTimeout(() => setView((v) => (v === "talk" ? "reveal" : v)), hasVoice ? 500 : 1500);
     const leave = window.setTimeout(() => setView((v) => (v === "photo" ? v : "photo")), hasVoice ? 1500 : 2500);
@@ -135,18 +144,17 @@ export function Stage({
       window.clearTimeout(reveal);
       window.clearTimeout(leave);
     };
-  }, [photo, done, blocked, hasVoice]);
+  }, [hasPhoto, done, blocked, hasVoice]);
   const photoView = Boolean(photo) && view === "photo";
 
-  // Play the reply once, as the photo appears. Keyed by the answer, so this runs per answer.
-  const id = answer?.id;
+  // Play the reply once, as soon as its audio is there (with the text, or a moment after it).
+  const audioUrl = answer?.replyAudioUrl;
   useEffect(() => {
     const audio = audioRef.current;
-    if (!(id && audio && answer?.replyAudioUrl)) return;
+    if (!(audioUrl && audio)) return;
     audio.currentTime = 0;
     audio.play().catch(() => setBlocked(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [audioUrl]);
 
   const toggle = () => {
     const audio = audioRef.current;
@@ -161,6 +169,14 @@ export function Stage({
   };
 
   let caption: ReactNode = null;
+  const seeHistory = answer?.itemId && (
+    <>
+      {" · "}
+      <Link className="underline underline-offset-4" href={`/items/${answer.itemId}`} onClick={(e) => e.stopPropagation()}>
+        See where the {name} {name.endsWith("s") ? "have" : "has"} been
+      </Link>
+    </>
+  );
   if (answer?.found && answer.match) {
     const place = placeWords(answer.match.zone);
     caption = (
@@ -169,20 +185,22 @@ export function Stage({
         {place ? ` · on ${place}` : ""} · <span className="figures">{percent(answer.match.confidence)} sure</span>
       </span>
     );
+  } else if (answer?.found) {
+    // Found on the user's word: there is no box to draw.
+    caption = (
+      <span data-testid="found-caption">
+        <span className="font-semibold first-letter:uppercase">{name}</span> · in the photo, by your word
+      </span>
+    );
+  } else if (answer && answer.found === null) {
+    caption = <span>{answer.target ? `Cannot seek the ${name} yet · what the camera saw` : "What the camera saw"}</span>;
   } else if (answer?.lastSighting) {
     const place = placeWords(answer.lastSighting.zone);
     caption = (
       <span>
         Not in view · last seen {relativeTime(answer.lastSighting.seenAt, answeredAt)}
         {place ? ` on ${place}` : ""}
-        {answer.itemId && (
-          <>
-            {" · "}
-            <Link className="underline underline-offset-4" href={`/items/${answer.itemId}`} onClick={(e) => e.stopPropagation()}>
-              See where the {name} {name.endsWith("s") ? "have" : "has"} been
-            </Link>
-          </>
-        )}
+        {seeHistory}
       </span>
     );
   } else if (answer) {
@@ -200,11 +218,17 @@ export function Stage({
           <div aria-hidden={view === "talk"} className="absolute inset-0" data-shown={photoView || undefined} data-testid="camera-view">
             <figure className="h-full w-full" data-testid={answer?.found ? "found" : "not-found"}>
               <SnapshotFrame
-                alt={answer?.found ? `Camera photo with the ${name} circled` : `Last photo with the ${name}`}
+                alt={
+                  photo.lens && answer?.found
+                    ? `Camera photo with the ${name} circled`
+                    : photo.lens
+                      ? `Last photo with the ${name}`
+                      : "The camera's photo for this question"
+                }
                 className="h-full"
                 height={photo.snapshot.height}
                 key={`${answer?.id}-${photo.snapshot.id}`}
-                lens={{ box: photo.box, label: name, confidence: photo.confidence }}
+                lens={photo.lens ? { box: photo.lens.box, label: name, confidence: photo.lens.confidence } : undefined}
                 priority
                 src={photo.snapshot.url}
                 width={photo.snapshot.width}
