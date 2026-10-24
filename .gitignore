@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+*.env
 !.env.example
 
 # Model weights and datasets (stored in object storage, not git)
