@@ -31,7 +31,7 @@ export function Narrator({ speaking, className }: { speaking: boolean; className
 
   return (
     <figure className={cn("relative", className)} data-speaking={speaking || undefined} ref={root}>
-      <figcaption aria-live="polite" className="mb-1 text-right text-ink-muted text-sm">
+      <figcaption aria-live="polite" className="mb-1 pr-3 text-right text-ink-muted text-sm">
         {speaking ? (
           <span className="font-semibold text-ink">Speaking…</span>
         ) : (

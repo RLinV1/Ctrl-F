@@ -347,7 +347,12 @@ export function AskPanel() {
             <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
           </aside>
         )}
-        <Narrator className="mt-auto ml-auto w-56 md:w-full md:max-w-[340px]" speaking={speaking} />
+        {/* Reserves his corner, so content never runs under him on wider screens. */}
+        <div aria-hidden className="mt-auto hidden h-[400px] md:block" />
+        <Narrator
+          className="ml-auto w-56 md:absolute md:right-0 md:bottom-0 md:w-[340px] md:max-w-none"
+          speaking={speaking}
+        />
       </div>
     </div>
   );

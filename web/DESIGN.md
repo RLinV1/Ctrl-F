@@ -43,7 +43,7 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 ## The narrator
 
 A steampunk detective (deerstalker, brass goggles, pipe) is the face of the ElevenLabs voice that reads every
-answer. He stands, large, in the bottom-right corner of the Ask page, facing the panel,, in the page flow so he never covers content
+answer. He stands, large (340px), flush in the bottom-right corner of the Ask page sheet, facing the panel; a spacer in his column keeps content out of that corner,, in the page flow so he never covers content
 (`components/ctrlf/narrator.tsx`, image `public/narrator.png`). The right column runs to the bottom of the page; before a question it holds only him;
 after an answer the telegram slip prints above him. He nods while a reply's audio plays and his caption reads
 "Speaking…". On phones he sits under the Ask panel, on the right. Still under reduced motion.

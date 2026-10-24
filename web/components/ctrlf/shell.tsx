@@ -119,7 +119,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
         </div>
       )}
 
-      <main className="min-w-0 flex-1 border-rule bg-sheet/55 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
+      <main className="relative min-w-0 flex-1 border-rule bg-sheet/55 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
         {children}
       </main>
     </div>
