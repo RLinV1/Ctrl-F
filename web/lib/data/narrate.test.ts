@@ -28,6 +28,10 @@ describe("narration helpers", () => {
     });
   });
 
+  it("says a missing item was never seen when there is no earlier sighting", () => {
+    expect(factsFor({ status: "not_visible", target: "keys", matches: [], detections: [] })).toMatchObject({ never_seen_before: true });
+  });
+
   it("turns character times into word times", () => {
     const chars = [..."hi yo"];
     const starts = chars.map((_, i) => i / 10);

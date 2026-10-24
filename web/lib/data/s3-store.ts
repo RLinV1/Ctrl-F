@@ -26,7 +26,7 @@ const RESULTS_READ = 60; // newest results read to build items and history
 const RESULTS_TTL_MS = 3000;
 const STALE_PENDING_MS = 60_000;
 const STALE_MS = 120_000;
-const ONLINE_MS = { pi: 15_000, desktop: 60_000 } as const;
+const DESKTOP_ONLINE_MS = 60_000;
 const DEFAULT_SIZE = { width: 1280, height: 720 }; // what pi/capture.py shoots
 
 type Stored = {
@@ -66,6 +66,7 @@ export class S3Store implements Store {
   private bucket = process.env.S3_BUCKET || "ctrlf-snapshots";
   private client: S3Client;
   private signer: S3Client;
+  private cameraDown = false; // set when a job was not picked up in time, cleared when the Pi next takes one
   private jobs = new Map<string, JobRec>();
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
@@ -204,7 +205,9 @@ export class S3Store implements Store {
       // The jpg lands after the json, so both present means the processing server is done.
       if (await this.hasResult(id)) rec = await this.finish(rec);
       else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed" });
+      if (rec.status === "pending" && Date.now() - Date.parse(rec.createdAt) > STALE_PENDING_MS) this.cameraDown = true;
     }
+    if (rec.status === "claimed" || rec.status === "done") this.cameraDown = false;
     return this.view(rec);
   }
 
@@ -370,18 +373,17 @@ export class S3Store implements Store {
     return Promise.all(page.map((s) => this.sighting(s)));
   }
 
-  /** Neither device talks to this server. The Pi is seen by its newest upload to incoming/, the desktop by its newest result or heartbeat object. */
+  /** Neither device talks to this server. The camera counts as online until a job goes unclaimed, and the desktop is seen by its newest result or heartbeat object. */
   async deviceStatus(): Promise<DeviceStatus[]> {
     const shot = Math.max(0, ...(await this.list("incoming/", 5000)).map((o) => +o.at)) || null;
     const beat = (await this.list("results/heartbeat", 10)).map((o) => +o.at);
     const done = (await this.recentResults())[0];
     const desktop = Math.max(0, ...beat, done ? Date.parse(done.at) : 0) || null;
-    const at = (device: "pi" | "desktop", t: number | null): DeviceStatus => ({
-      device,
-      lastSeenAt: t ? new Date(t).toISOString() : null,
-      online: t !== null && Date.now() - t <= ONLINE_MS[device],
-    });
-    return [at("pi", shot), at("desktop", desktop)];
+    const seen = (t: number | null) => (t ? new Date(t).toISOString() : null);
+    return [
+      { device: "pi", lastSeenAt: seen(shot), online: !this.cameraDown },
+      { device: "desktop", lastSeenAt: seen(desktop), online: desktop !== null && Date.now() - desktop <= DESKTOP_ONLINE_MS },
+    ];
   }
 }
 
