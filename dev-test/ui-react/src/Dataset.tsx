@@ -40,7 +40,7 @@ export default function Dataset() {
   return (
     <>
       <section>
-        <h2>Labeled appliances</h2>
+        <h2>Labeled small items</h2>
         <table>
           <thead><tr><th>Split</th><th>Images</th>{data.classes.map((c) => <th key={c}>{c}</th>)}</tr></thead>
           <tbody>

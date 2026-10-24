@@ -7,7 +7,7 @@ Audit date: 2026-10-24. This is an engineering review, not legal advice. Items m
 | Area | Status | Action |
 | --- | --- | --- |
 | Ultralytics YOLO (AGPL-3.0) | **Blocker for closed or commercial use** | Decide: open-source the repo under AGPL-3.0, buy an Ultralytics Enterprise license, or swap the detector |
-| Appliance dataset (Open Images, CC BY) | OK with attribution | Keep `datasets/appliances/ATTRIBUTION.csv`; credit if the images are ever redistributed |
+| Appliance dataset (Open Images, CC BY) | OK with attribution | Keep `datasets/personal/ATTRIBUTION.csv`; credit if the images are ever redistributed |
 | ElevenLabs | OK for development; **verify** commercial terms | Free tier is non-commercial and needs attribution; use a paid plan before any commercial launch |
 | Gemini | OK; **verify** data-use terms for your tier | Send text only, never photos |
 | Other dependencies | OK | All permissive (MIT, BSD, Apache-2.0, PSF) |
@@ -28,7 +28,7 @@ Options if AGPL does not fit: Ultralytics Enterprise License (priced per deploym
 
 ## 2. Training data
 
-- **Open Images V7** (used by `training/prepare_appliances.py`): annotations are CC BY 4.0. Images carry their own license, listed as CC BY 2.0, and Google makes no guarantee per image. The script keeps only images whose metadata says CC BY (not NC, ND, or SA). All 440 images in the current dataset are `creativecommons.org/licenses/by/2.0`. Author and source for each are in `datasets/appliances/ATTRIBUTION.csv` (git-ignored with the data).
+- **Open Images V7** (used by `training/prepare_openimages.py`): annotations are CC BY 4.0. Images carry their own license, listed as CC BY 2.0, and Google makes no guarantee per image. The script keeps only images whose metadata says CC BY (not NC, ND, or SA). All 1,098 images in the current dataset are `creativecommons.org/licenses/by/2.0`. Author and source for each are in `datasets/personal/ATTRIBUTION.csv` (git-ignored with the data).
 - **Attribution:** required when redistributing the images. Training on them and shipping only weights is the common practice, but whether weights count as a derivative is unsettled. **verify** if you publish the weights.
 - **COCO (pretrained weights):** `yolo11n.pt` was trained on COCO. COCO annotations are CC BY 4.0 and its images come from Flickr with varied licenses (**verify**; I could not load the terms page).
 - **Your own webcam photos** (`collect.py`, the React Camera panel): you own them, but they may show people or private spaces. Do not commit them (`datasets/` is git-ignored).

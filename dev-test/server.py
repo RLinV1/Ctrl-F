@@ -28,13 +28,13 @@ REPORT = HERE / "out" / "report.json"
 PORT = 8000
 
 
-DATASET = ROOT / "datasets" / "appliances"
+DATASET = ROOT / "datasets" / "personal"
 SPLITS = ("train", "val", "test")
 
 
 def dataset_listing() -> dict:
     """Every labeled appliance image with its boxes (normalized x1,y1,x2,y2) and photo credit."""
-    classes = list(yaml.safe_load((ROOT / "training" / "appliances.yaml").read_text())["names"].values())
+    classes = list(yaml.safe_load((ROOT / "training" / "personal.yaml").read_text())["names"].values())
     credit = {}
     attribution = DATASET / "ATTRIBUTION.csv"
     if attribution.exists():
@@ -80,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url.path == "/api/dataset":
             if not DATASET.exists():
-                return self._json(404, {"error": "No dataset yet. Run training/prepare_appliances.py first."})
+                return self._json(404, {"error": "No dataset yet. Run training/prepare_openimages.py first."})
             return self._json(200, dataset_listing())
         if url.path == "/api/dataimage":
             query = parse_qs(url.query)

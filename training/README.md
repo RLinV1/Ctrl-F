@@ -11,15 +11,19 @@ Plan and rationale: [docs/TRAINING.md](../docs/TRAINING.md). Datasets and weight
 5. **Evaluate.** `python training/eval.py runs/ctrlf/ctrlf/weights/best.pt` (target: recall >= 0.80 per class).
 6. **Deploy.** Upload `best.pt` to storage under `models/<version>/best.pt`, then set `YOLO_WEIGHTS_PATH`.
 
-## Household appliance model (free dataset)
+## Small lost items (free dataset) and a Raspberry Pi sized model
 
-`prepare_appliances.py` builds a dataset from Open Images V7 (CC BY images only): refrigerator, microwave, oven, washing machine, blender, coffeemaker. About 440 images, so expect a modest model.
+The target is small things people lose, never large appliances. `prepare_openimages.py` builds a dataset from Open Images V7 (CC BY images only): phone, glasses, remote, watch, headphones. Open Images has no keys, wallet, wires, AirPods, or AirPods case, so those need other data (the Roboflow Universe AirPods sets, the LeftInCAR dataset on Mendeley, or your own photos from the dev UI Camera tab).
 
 ```bash
-python training/prepare_appliances.py
-python training/train.py --data training/appliances.yaml --epochs 25 --imgsz 512 --device cpu --name appliances
-python training/eval.py runs/appliances/weights/best.pt --data training/appliances.yaml
+python training/prepare_openimages.py
+python training/train.py --data training/personal.yaml --model yolo11n.pt --epochs 80 --imgsz 640 --device 0 --name small-items
+python training/eval.py runs/small-items/weights/best.pt --data training/personal.yaml
+python training/report.py runs/small-items/weights/best.pt --data training/personal.yaml --device 0
+python training/export.py runs/small-items/weights/best.pt --imgsz 416
 ```
+
+`yolo11n` (the nano size) is the model to run on a Raspberry Pi 4B. `export.py` converts it to NCNN, the fastest CPU format on a Pi, and times it on this machine. Copy the exported folder to the Pi to measure real speed.
 
 Licensing notes for the data and for Ultralytics are in [docs/LICENSES.md](../docs/LICENSES.md).
 
