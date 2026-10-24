@@ -8,7 +8,6 @@ import ReceiptPrinter, { type SlipLine } from "@/components/kokonutui/receipt-pr
 import SyncedTranscript from "@/components/kokonutui/synced-transcript";
 import type { JobView } from "@/lib/data/types";
 import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
-import { useDeviceStatus } from "./device-status";
 import { CogTrain } from "./cog-train";
 import { Narrator } from "./narrator";
 import { SnapshotFrame } from "./snapshot-frame";
@@ -142,7 +141,7 @@ async function submit(blob: Blob): Promise<string> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ audioKey: slot.audioKey }),
   });
-  if (!jobRes.ok) throw new Error("The request was not accepted.");
+  if (!jobRes.ok) throw new Error((await jobRes.json().catch(() => null))?.error ?? "The request was not accepted.");
   return (await jobRes.json()).id;
 }
 
@@ -176,7 +175,6 @@ function slipFor(job: JobView): { stamp: string; lines: SlipLine[] } {
 
 export function AskPanel() {
   const { mic, level, start, stop } = useRecorder();
-  const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [blocked, setBlocked] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -239,7 +237,6 @@ export function AskPanel() {
     }
   };
 
-  const offline = status?.filter((s) => !s.online) ?? [];
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
@@ -262,13 +259,6 @@ export function AskPanel() {
               onHoldStart={onHoldStart}
               recording={phase.kind === "recording"}
             />
-            {offline.length > 0 && (
-              <p className="mt-3 text-center text-copper text-sm" data-testid="offline-warning">
-                {offline.some((d) => d.device === "pi")
-                  ? "The camera is offline. Your question will wait until it is back."
-                  : "The desktop is offline. Answers will be delayed until it is back."}
-              </p>
-            )}
             {mic === "denied" && (
               <p className="mt-3 text-center text-copper text-sm" role="alert">
                 The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then
