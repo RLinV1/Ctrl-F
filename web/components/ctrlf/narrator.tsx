@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /*
  * The narrator: the steampunk detective whose voice (ElevenLabs) reads every answer.
- * He stands in the bottom-left corner of the Ask section and comes alive while a
+ * He stands in the bottom-right corner of the Ask page and comes alive while a
  * reply plays; `speaking` follows the reply's audio.
  */
 
@@ -31,6 +31,13 @@ export function Narrator({ speaking, className }: { speaking: boolean; className
 
   return (
     <figure className={cn("relative", className)} data-speaking={speaking || undefined} ref={root}>
+      <figcaption aria-live="polite" className="mb-1 text-right text-ink-muted text-sm">
+        {speaking ? (
+          <span className="font-semibold text-ink">Speaking…</span>
+        ) : (
+          "Ask, and I shall read you the answer."
+        )}
+      </figcaption>
       {/* eslint-disable-next-line @next/next/no-img-element -- a transparent PNG; the optimiser is off locally */}
       <img
         alt="The narrator, a detective in a deerstalker with brass goggles and a pipe"
@@ -41,13 +48,6 @@ export function Narrator({ speaking, className }: { speaking: boolean; className
         src="/narrator.png"
         width={400}
       />
-      <figcaption aria-live="polite" className="mt-1 text-ink-muted text-sm">
-        {speaking ? (
-          <span className="font-semibold text-ink">Speaking…</span>
-        ) : (
-          "Ask, and I shall read you the answer."
-        )}
-      </figcaption>
     </figure>
   );
 }

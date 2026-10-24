@@ -246,8 +246,8 @@ export function AskPanel() {
   const slip = answer ? slipFor(answer) : null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-12">
-      <section aria-labelledby="ask-title" className="bg-panel p-5 md:col-span-9">
+    <div className="grid flex-1 gap-4 md:grid-cols-12">
+      <section aria-labelledby="ask-title" className="self-start bg-panel p-5 md:col-span-8">
         <h2 className="font-semibold text-[15px]" id="ask-title">
           Ask where something is
         </h2>
@@ -338,16 +338,16 @@ export function AskPanel() {
         {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
       </section>
 
-      {/* The left column: the answer slip once there is one, and the narrator standing in
-          the section's bottom-left corner, facing the panel. In the page flow, so he never
-          covers content. On phones it follows the panel. */}
-      <div className="flex flex-col gap-4 md:order-first md:col-span-3">
+      {/* The right column runs to the bottom of the page: the answer slip at its top once
+          there is one, and the narrator standing in the page's bottom-right corner, facing
+          the panel. In the page flow, so he never covers content. */}
+      <div className="flex flex-col gap-4 md:col-span-4">
         {slip && answer && (
           <aside aria-label="Answer slip">
             <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
           </aside>
         )}
-        <Narrator className="mt-auto mr-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
+        <Narrator className="mt-auto ml-auto w-56 md:w-full md:max-w-[340px]" speaking={speaking} />
       </div>
     </div>
   );
