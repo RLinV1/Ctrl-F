@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, Suspense, useState } from "react";
-import HalftoneBackground from "@/components/kokonutui/halftone-background";
+import DotField from "@/components/kokonutui/dot-field";
 import { cn } from "@/lib/utils";
 import { DeviceStatusPanel } from "./device-status";
 import { Mark } from "./mark";
@@ -83,18 +83,16 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut?: Re
 
   return (
     <div className="relative isolate min-h-dvh bg-paper md:flex">
-      {/* Cogs printed as a brass halftone screen behind the frame, like an engraved trade
-          plate. Fixed to the window; the sheet lets them show faintly between panels. */}
-      <HalftoneBackground
-        angle={45}
-        cell={11}
-        className="pointer-events-none fixed inset-0 -z-10 min-h-0 bg-transparent"
-        inkClassName="text-brass/45"
-        loupe={false}
-        src="/halftone-cogs.svg"
+      {/* A field of brass dots behind the frame that ripples under the cursor and rings out
+          where you click on empty space. Fixed to the window; still under reduced motion. */}
+      <DotField
+        className="pointer-events-none fixed inset-0 -z-10 min-h-0 bg-transparent text-brass"
+        listenOnWindow
+        masked={false}
+        spacing={18}
       >
         {null}
-      </HalftoneBackground>
+      </DotField>
       <aside className="hidden w-[228px] shrink-0 flex-col bg-paper/85 px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
         {brand}
         {nav}
@@ -121,7 +119,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut?: Re
         </div>
       )}
 
-      <main className="relative min-w-0 flex-1 border-rule bg-sheet/55 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
+      <main className="relative min-w-0 flex-1 border-rule bg-sheet/35 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
         {children}
       </main>
     </div>

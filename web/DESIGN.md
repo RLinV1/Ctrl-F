@@ -37,10 +37,11 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 - **The cog train:** seven cogs in brass, dark brass, copper and iron that hop, turn and swell in a wave
   (anime.js `waapi.animate` with `stagger(75)`), shown only while a question is being worked on; still under
   reduced motion (`components/ctrlf/cog-train.tsx`).
-- **The halftone background:** large cogs printed as a brass halftone screen behind the frame (Kokonut
-  `halftone-background`, image `public/halftone-cogs.svg`), added at the team's request. Decoration, not
-  information: the sidebar has a paper backing and panels stay opaque, so it never sits under text. It replaced the
-  earlier flow-field background.
+- **The dot-field background:** a field of brass halftone dots behind the frame (Kokonut `dot-field`, with
+  `listenOnWindow` and `masked={false}` added) that drifts slowly, ripples under the cursor and rings out where you
+  click empty space. Decoration, not information: the sidebar has a paper backing and panels stay opaque, so it
+  never sits under text; clicks on controls never trigger it; still under reduced motion. It replaced the halftone
+  cogs, which replaced the earlier flow-field.
 
 ## The narrator
 
