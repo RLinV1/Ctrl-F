@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /*
  * The narrator: the steampunk detective whose voice (ElevenLabs) reads every answer.
- * He stands in the bottom-right corner of the Ask section and comes alive while a
+ * He stands in the bottom-left corner of the Ask section and comes alive while a
  * reply plays; `speaking` follows the reply's audio.
  */
 

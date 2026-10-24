@@ -338,15 +338,16 @@ export function AskPanel() {
         {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
       </section>
 
-      {/* The right column: the answer slip once there is one, and the narrator standing in
-          the section's bottom-right corner. In the page flow, so he never covers content. */}
-      <div className="flex flex-col gap-4 md:col-span-3">
+      {/* The left column: the answer slip once there is one, and the narrator standing in
+          the section's bottom-left corner, facing the panel. In the page flow, so he never
+          covers content. On phones it follows the panel. */}
+      <div className="flex flex-col gap-4 md:order-first md:col-span-3">
         {slip && answer && (
           <aside aria-label="Answer slip">
             <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
           </aside>
         )}
-        <Narrator className="mt-auto ml-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
+        <Narrator className="mt-auto mr-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
       </div>
     </div>
   );
