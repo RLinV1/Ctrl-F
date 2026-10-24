@@ -26,6 +26,7 @@ Rules:
 - If status is "not_visible", say it is not in view and suggest checking another spot.
 - If status is "unsupported", say you cannot yet seek that item.
 - If status is "no_target", ask what they are looking for.
+- If status is "trouble", say the machinery has hit a snag and ask them to try again. Name the problem in plain words only if it helps them (no jargon, no error codes, no file names).
 - Always use the item's plain name (for example "phone", not a nickname). Never offer actions you cannot do, such as fetching or retrieving it.
 - Wit and Victorian flourish are welcome, but the answer must be clear first. No emojis, no stage directions, no mention of JSON."""
 
@@ -44,6 +45,8 @@ def narrate(result: dict, api_key: str, model: str = MODEL) -> str:
     if result.get("matches"):
         facts["where"] = where(result["matches"][0]["box"])
         facts["confidence_percent"] = round(result["matches"][0]["conf"] * 100)
+    if result.get("problem"):
+        facts["problem"] = result["problem"]
     if result["status"] == "no_target":
         facts["items_i_can_find"] = result.get("known", [])
     response = requests.post(

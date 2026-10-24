@@ -23,8 +23,32 @@ export default function Mic() {
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [result, setResult] = useState<Found | null>(null);
+  const [says, setSays] = useState("");
   const recorder = useRef<MediaRecorder | null>(null);
   const camera = useRef<{ stream: MediaStream; video: HTMLVideoElement } | null>(null);
+
+  // Show the reply and read it aloud with ElevenLabs. If speech fails the text is still on the page.
+  async function say(text: string) {
+    setSays(text);
+    try {
+      const res = await fetch("/api/tts", { method: "POST", body: JSON.stringify({ text }) });
+      if (res.ok) await new Audio(URL.createObjectURL(await res.blob())).play();
+    } catch {
+      /* no audio: the text above is enough */
+    }
+  }
+
+  // Something broke: Sherlock explains it (Gemini + ElevenLabs) instead of the page showing an error.
+  async function trouble(problem: string) {
+    setStatus({ text: "" });
+    let narration: string | null = null;
+    try {
+      narration = (await readJson(await fetch("/api/trouble", { method: "POST", body: JSON.stringify({ problem }) }))).narration;
+    } catch {
+      /* API server is down: fall through to the plain line */
+    }
+    await say(narration ?? "The machinery has hit a snag. Please try again in a moment.");
+  }
 
   async function start() {
     try {
@@ -49,10 +73,11 @@ export default function Mic() {
       setClipUrl(null);
       setPhotoUrl(null);
       setResult(null);
+      setSays("");
       setStatus({ text: "Listening... click Stop when you are done." });
       rec.addEventListener("stop", () => void finish(new Blob(chunks, { type: rec.mimeType })), { once: true });
     } catch (err) {
-      setStatus({ text: `Mic unavailable: ${(err as Error).message}`, error: true });
+      void trouble(`the microphone is unavailable (${(err as Error).message})`);
     }
   }
 
@@ -71,22 +96,23 @@ export default function Mic() {
 
   async function finish(clip: Blob) {
     const photo = await takePhoto();
-    if (clip.size === 0) return setStatus({ text: "No audio was captured. Check the mic in browser settings.", error: true });
-    if (!photo) return setStatus({ text: "No camera available, so no photo could be taken.", error: true });
+    if (clip.size === 0) return trouble("no audio was captured from the microphone");
+    if (!photo) return trouble("no camera is available, so no photo could be taken");
     setClipUrl(URL.createObjectURL(clip));
     setPhotoUrl(URL.createObjectURL(photo));
     try {
       setStatus({ text: "Transcribing..." });
       const stt = await readJson(await fetch("/api/stt", { method: "POST", body: clip }));
-      if (stt.error) return setStatus({ text: `Speech to text failed: ${stt.error}`, error: true });
+      if (stt.error) return trouble("the speech could not be transcribed");
       setStatus({ text: `Heard "${stt.text}". Looking in the photo...` });
       const res = await fetch(`/api/find?text=${encodeURIComponent(stt.text)}`, { method: "POST", body: photo });
       const found = await readJson<Found>(res);
-      if (!res.ok) return setStatus({ text: `Model failed: ${found.error}`, error: true });
+      if (!res.ok) return trouble("the item-finding model is not available yet");
       setResult(found);
       setStatus({ text: `Heard "${found.transcript}"` });
-    } catch (err) {
-      setStatus({ text: `Could not reach the API server (is dev-test/server.py running?): ${(err as Error).message}`, error: true });
+      await say(found.narration ?? found.message);
+    } catch {
+      setStatus({ text: "Could not reach the API server (is dev-test/server.py running?)", error: true });
     }
   }
 
@@ -111,7 +137,7 @@ export default function Mic() {
         </p>
       )}
       <StatusLine status={status} />
-      {result && <p><b>{result.narration ?? result.message}</b></p>}
+      {says && <p><b>{says}</b></p>}
       {photoUrl && (
         <div style={{ position: "relative", maxWidth: 640 }}>
           <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />

@@ -71,6 +71,17 @@ def find(jpeg: bytes, transcript: str) -> dict:
             "known": known, "detections": detections, "model": WEIGHTS.name, "seconds": round(time.perf_counter() - started, 2)}
 
 
+def narration_for(result: dict) -> str | None:
+    """Gemini's Sherlock wording of a result, or None when there is no key or Gemini fails."""
+    if not os.environ.get("GEMINI_API_KEY"):
+        return None
+    try:
+        return narrate(result, os.environ["GEMINI_API_KEY"], os.environ.get("GEMINI_MODEL") or MODEL)
+    except (SystemExit, requests.RequestException, KeyError, IndexError) as error:
+        print(f"[narrator] {error}", flush=True)
+        return None
+
+
 def dataset_listing() -> dict:
     """Every labeled appliance image with its boxes (normalized x1,y1,x2,y2) and photo credit."""
     classes = list(yaml.safe_load((ROOT / "training" / "personal.yaml").read_text())["names"].values())
@@ -169,13 +180,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"ok": True})
             elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
                 result = find(self._body(), parse_qs(url.query).get("text", [""])[0])
-                result["narration"] = None  # the UI falls back to the plain "message" when Gemini is unavailable
-                if os.environ.get("GEMINI_API_KEY"):
-                    try:
-                        result["narration"] = narrate(result, os.environ["GEMINI_API_KEY"], os.environ.get("GEMINI_MODEL") or MODEL)
-                    except (SystemExit, requests.RequestException, KeyError, IndexError) as error:
-                        print(f"[narrator] {error}", flush=True)
+                result["narration"] = narration_for(result)  # None -> the UI falls back to the plain "message"
                 self._json(200, result)
+            elif url.path == "/api/trouble":  # body = {"problem": "..."}; Sherlock explains instead of the UI showing an error
+                problem = json.loads(self._body())["problem"]
+                print(f"[trouble] {problem}", flush=True)
+                self._json(200, {"narration": narration_for({"status": "trouble", "target": None, "matches": [], "problem": problem})})
             else:
                 self._json(404, {"error": "not found"})
         except FileNotFoundError as error:  # no trained weights yet
