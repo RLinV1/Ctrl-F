@@ -12,6 +12,24 @@ import { useDeviceStatus } from "./device-status";
 import { CogTrain } from "./cog-train";
 import { Narrator } from "./narrator";
 import { CameraView } from "./camera-view";
+import { CameraButton, TypeQuestion } from "./ask-inputs";
+import { MorphicNavbar } from "@/components/kokonutui/morphic-navbar";
+
+/** The three ways to ask, in the switch at the top of the Ask box. */
+export type AskMode = "speak" | "type" | "camera";
+const MODES = {
+  speak: { name: "Speak here" },
+  type: { name: "Type it" },
+  camera: { name: "Camera button" },
+};
+
+const IDLE_TEXT: Record<AskMode, string> = {
+  speak:
+    "Hold the button and say what you are looking for, like “where are my keys?”. The camera takes a photo and the answer is read back to you.",
+  type: "Type what you are looking for and press Ask. The camera takes a photo and the answer is read back to you.",
+  camera:
+    "Press the button on the camera and ask out loud; its own mic hears you. The answer shows here and is read back to you.",
+};
 
 export const POLL_MS = 750;
 export const MIN_HOLD_S = 0.5;
@@ -180,6 +198,7 @@ export function AskPanel() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [blocked, setBlocked] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [mode, setMode] = useState<AskMode>("speak");
   const holdRef = useRef<Promise<boolean> | null>(null);
 
   // Poll the job until it is answered, failed, or stale.
@@ -239,6 +258,28 @@ export function AskPanel() {
     }
   };
 
+  const askText = async (text: string) => {
+    setBlocked(false);
+    setPhase({ kind: "sending" });
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "The question was not accepted.");
+      setPhase({ kind: "waiting", job: null, jobId: body.id });
+    } catch (error) {
+      setPhase({ kind: "failed", message: (error as Error).message });
+    }
+  };
+
+  const onCameraJob = useCallback((id: string) => {
+    setBlocked(false);
+    setPhase({ kind: "waiting", job: null, jobId: id });
+  }, []);
+
   const offline = status?.filter((s) => !s.online) ?? [];
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
@@ -252,17 +293,37 @@ export function AskPanel() {
         <h2 className="font-semibold text-[15px]" id="ask-title">
           Ask where something is
         </h2>
+        <MorphicNavbar
+          className="mt-3 justify-start px-0 py-0"
+          items={MODES}
+          label="How to ask"
+          onValueChange={(next) => {
+            setMode(next as AskMode);
+            if (phase.kind === "idle" && phase.hint) setPhase({ kind: "idle" });
+          }}
+          value={mode}
+        />
 
-        <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+        <div className="mt-5 grid gap-6 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)]" data-mode={mode}>
           <div className="flex flex-col items-center">
-            <AI_Voice
-              caption={working ? "Working on your last question" : "Hold to ask"}
-              disabled={micBlocked || working}
-              level={level}
-              onHoldEnd={onHoldEnd}
-              onHoldStart={onHoldStart}
-              recording={phase.kind === "recording"}
-            />
+            {mode === "speak" && (
+              <AI_Voice
+                caption={working ? "Working on your last question" : "Hold to ask"}
+                disabled={micBlocked || working}
+                level={level}
+                onHoldEnd={onHoldEnd}
+                onHoldStart={onHoldStart}
+                recording={phase.kind === "recording"}
+              />
+            )}
+            {mode === "type" && <TypeQuestion disabled={working} onAsk={askText} />}
+            {mode === "camera" && (
+              <CameraButton
+                cameraOnline={!offline.some((d) => d.device === "pi")}
+                listening={!working}
+                onJob={onCameraJob}
+              />
+            )}
             {offline.length > 0 && (
               <p className="mt-3 text-center text-copper text-sm" data-testid="offline-warning">
                 {offline.some((d) => d.device === "pi")
@@ -270,13 +331,13 @@ export function AskPanel() {
                   : "The desktop is offline. Answers will be delayed until it is back."}
               </p>
             )}
-            {mic === "denied" && (
+            {mode === "speak" && mic === "denied" && (
               <p className="mt-3 text-center text-copper text-sm" role="alert">
                 The microphone is blocked. Allow it in this site&apos;s settings (the icon left of the address), then
                 reload. <Link className="underline underline-offset-4" href="/items">Items</Link> still work without it.
               </p>
             )}
-            {mic === "unavailable" && (
+            {mode === "speak" && mic === "unavailable" && (
               <p className="mt-3 text-center text-copper text-sm" role="alert">
                 No microphone is available in this browser. You can still browse{" "}
                 <Link className="underline underline-offset-4" href="/items">Items</Link>.
@@ -291,10 +352,7 @@ export function AskPanel() {
 
           <div aria-live="polite" className="min-w-0" data-phase={phase.kind}>
             {(phase.kind === "idle" || phase.kind === "recording") && (
-              <p className="max-w-[46ch] text-[17px] text-ink-muted">
-                Say what you are looking for, like “where are my keys?”. The camera takes a photo and the answer is
-                read back to you.
-              </p>
+              <p className="max-w-[46ch] text-[17px] text-ink-muted">{IDLE_TEXT[mode]}</p>
             )}
             {working && (
               <div>
@@ -315,7 +373,7 @@ export function AskPanel() {
             {phase.kind === "failed" && (
               <div role="alert">
                 <p className="font-semibold text-[17px] text-copper">That request failed.</p>
-                <p className="mt-1 text-ink-muted">{phase.message} Hold the button to try again.</p>
+                <p className="mt-1 text-ink-muted">{phase.message} Ask again to try once more.</p>
               </div>
             )}
             {answer && (

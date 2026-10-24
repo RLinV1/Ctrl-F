@@ -6,6 +6,31 @@ The Ask screen: a person holds one control, says what they are looking for, and 
 
 ## ADDED Requirements
 
+### Requirement: Three ways to ask
+The Ask box SHALL offer a switch between speaking into this computer's microphone (the default), typing the question, and pressing the camera's button to ask through the camera's mic. The chosen way SHALL be marked as selected, and the area below the switch SHALL show only that way's control.
+
+#### Scenario: Switching
+- **WHEN** the user picks "Type it"
+- **THEN** "Type it" is marked selected, a text field and an Ask button replace the talk control, and the instructions describe typing
+
+### Requirement: Ask by typing
+In typing mode the screen SHALL send the typed question when Ask is pressed or Enter is typed, keep Ask disabled while the field is empty or a question is being worked on, and show the answer exactly as for a spoken question.
+
+#### Scenario: Typed question answered
+- **WHEN** the user types "where are my glasses" and presses Ask
+- **THEN** the progress state shows, then the answer with "You asked: “where are my glasses”" and the photo with the glasses circled
+
+### Requirement: Ask with the camera button
+In camera-button mode the screen SHALL say it is listening for the camera's button, pick up a question asked at the camera within 2 seconds of its job being created, and show its progress and answer as for any question. It SHALL say when the camera is offline.
+
+#### Scenario: Button pressed at the camera
+- **WHEN** camera-button mode is open and the camera posts a new recording
+- **THEN** the screen moves to the progress state for that question and then shows its answer
+
+#### Scenario: Camera offline
+- **WHEN** camera-button mode is open and the camera is offline
+- **THEN** the screen says the camera's button cannot be heard
+
 ### Requirement: Push-to-talk recording
 The Ask screen SHALL record from the microphone only while the talk control is held, by pointer or by the Space key while the control has focus. Releasing it SHALL submit the clip. Clips under 0.5 seconds SHALL be discarded with a short hint.
 

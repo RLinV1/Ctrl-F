@@ -60,7 +60,15 @@
 - [ ] 9.1 Write `web/README.md` (install, env vars, mock mode, Postgres mode, HTTPS for LAN microphone access, adding a Kokonut component, running tests) and verify a clean clone runs the app in mock mode by following it exactly
 - [ ] 9.2 With `DATA_SOURCE=postgres`, the backend branch's database, and SeaweedFS running, simulate the Pi with `curl` on `/api/jobs/next` and the desktop by writing a finished job row with timings; verify the Ask screen shows the reply, the moving word mark, and the marked snapshot end to end
 
+## 10. Three ways to ask
+
+- [x] 10.1 Accept typed questions on `POST /api/jobs { text }` (trimmed, 1 to 300 characters), add `source` to jobs, `POST /api/device/jobs` for the camera's recordings (Pi token, audio body) and `GET /api/jobs/latest`; verify Vitest tests for typed answers, rejected text, device uploads (token, type, empty body) and the latest-job lookup
+- [x] 10.2 Add Kokonut `morphic-navbar`, adapt it to a controlled switch (`value`, `onValueChange`, buttons with `aria-pressed`) and restyle it; verify the switch renders three buttons with the active one pressed
+- [x] 10.3 Build the three modes in the Ask box (speak, type, camera button with a mock-only simulated press) and exclude `/api/device` from the password gate; verify Playwright tests in `web/e2e/ask-modes.spec.ts` and `web/e2e/access.spec.ts` for switching, a typed question, a simulated press, and the device endpoint's token check
+- [ ] 10.4 Record the `jobs.text`, `jobs.source` and nullable `audio_key` columns and the device endpoint in `docs/ARCHITECTURE.md`, and reverse "the Pi has no mic" in `docs/PRD.md` and `docs/TECH_STACK.md` (with task 2.6); verify the docs match `web/lib/data/types.ts`
+
 ## Workflow follow-up
 
-- Hand the `jobs` and `device_heartbeats` migration (design Decision 4) and the word-timings note to the backend branch owners.
+- Hand the `jobs` and `device_heartbeats` migration (design Decision 4, plus `text` and `source` from Decision 17) and the word-timings note to the backend branch owners.
+- Hand the camera-button contract (`POST /api/device/jobs`) to the Pi service owners.
 - Archive the change after review and merge, and verify the archived specs land in `openspec/specs/`.

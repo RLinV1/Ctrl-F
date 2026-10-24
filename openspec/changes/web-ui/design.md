@@ -121,6 +121,13 @@ Kokonut components keep their own `motion` usage as installed (rewriting them wo
 **14. Tests.**
 Playwright runs `next build && next start` with `DATA_SOURCE=mock` and Chromium flags `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`, so push-to-talk records real (synthetic) audio. Failure, offline, autoplay-blocked, and permission-denied states use `page.route` to stub responses or deny permissions. Playwright runs a reduced-motion project (`reducedMotion: 'reduce'`) for the Ask screen. Route handlers get unit tests with Vitest against the mock store; the claim query and staleness logic get a test against a disposable Postgres when `DATABASE_URL` is set (skipped otherwise).
 
+**17. Three ways to ask, one job pipeline.**
+Every way to ask ends as a job, so the Pi's claim, the desktop's processing and the answer screen stay one path:
+- *Speak here:* the existing browser recording, uploaded, then `POST /api/jobs { audioKey }`, source `web`.
+- *Type it:* `POST /api/jobs { text }`, source `web`; the job stores the text as its transcript and the desktop skips speech-to-text when a job has text and no audio (`jobs.text`, a new nullable column, with `audio_key` made nullable).
+- *Camera button:* the Pi records from its own mic while its button is held and posts the raw audio to `POST /api/device/jobs` (Pi token, excluded from the password gate like `/api/jobs/next`), source `device` (`jobs.source`, a new column). The page, in this mode, polls `GET /api/jobs/latest?source=device&since=…` every 1.5 s and adopts the newest job as its own.
+The switch is Kokonut's `morphic-navbar`, adapted with `value`/`onValueChange` so its segments are buttons (`aria-pressed`) instead of links. In mock mode `POST /api/mock/device-press` simulates a press for demos and tests. Alternative: a WebSocket from the Pi to the page. Rejected: the web app never talks to the Pi directly, and polling a tiny endpoint matches the rest of the hand-off.
+
 ## Risks / Trade-offs
 
 - [The backend branch changes the schema before merge] → All SQL lives in `web/lib/data/postgres.ts`; the mock and API shapes do not depend on table layout.
@@ -132,6 +139,8 @@ Playwright runs `next build && next start` with `DATA_SOURCE=mock` and Chromium 
 - [Kokonut components ship shadows, gradients, rounded corners, or no reduced-motion handling] → A restyle and reduced-motion check per component before it is used, verified by `lint.mjs --app` and `inspect.mjs --app`; the source is ours to change.
 - [Two animation libraries in the bundle] → `motion` loads only with the Kokonut components that import it; anime.js is imported per component. Check the Ask screen's client bundle size after task group 8.
 - [Kokonut registry changes upstream] → Copied source is pinned in git; we re-add a component only on purpose.
+- [The PRD and ARCHITECTURE still say the Pi has no mic] → Updated with the other docs in task 2.6; the Pi team needs the device endpoint contract (task 3.4).
+- [Two people asking at once in camera-button mode] → The page adopts the newest device job; one household, one camera, so this is acceptable.
 - [The animated background costs CPU on every screen] → It pauses offscreen and in background tabs, holds a still frame under reduced motion, and Playwright runs at most 3 browsers at once so tests stay reliable.
 - [Password gate is a single shared secret] → Matches the PRD's single-household scope; real accounts are a non-goal.
 

@@ -39,3 +39,13 @@ test("the Pi endpoint ignores the gate and checks its own token", async ({ reque
   const pi = await request.get("/api/jobs/next", { headers: { authorization: `Bearer ${TEST_PI_TOKEN}` } });
   expect([200, 204]).toContain(pi.status());
 });
+
+test("the camera's upload endpoint skips the gate and checks the Pi token", async ({ request }) => {
+  const audio = { "content-type": "audio/webm" };
+  expect((await request.post("/api/device/jobs", { headers: audio, data: Buffer.from([1, 2, 3]) })).status()).toBe(401);
+  const res = await request.post("/api/device/jobs", {
+    headers: { ...audio, authorization: `Bearer ${TEST_PI_TOKEN}` },
+    data: Buffer.from([1, 2, 3]),
+  });
+  expect(res.status()).toBe(201);
+});

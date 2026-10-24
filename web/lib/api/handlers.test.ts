@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DONE_AFTER_MS, MockStore } from "../data/mock/store";
-import { getItems, getJob, getNextJob, getSightings, getStatus, postJob, postUpload } from "./handlers";
+import { getItems, getJob, getLatestJob, getNextJob, getSightings, getStatus, postDeviceJob, postJob, postUpload } from "./handlers";
 
 const post = (body: unknown) =>
   new Request("http://x/api", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
@@ -56,9 +56,9 @@ describe("Pi claim", () => {
 
   it("claims the oldest pending job", async () => {
     const { t, store } = setup();
-    const first = await store.createJob("audio/a.webm");
+    const first = await store.createJob({ audioKey: "audio/a.webm" }, "web");
     t.now += 5;
-    await store.createJob("audio/b.webm");
+    await store.createJob({ audioKey: "audio/b.webm" }, "web");
     const res = await getNextJob(store, withAuth("secret"), "secret");
     expect(await res.json()).toEqual({ id: first.id });
   });
@@ -67,8 +67,8 @@ describe("Pi claim", () => {
 describe("job outcome", () => {
   it("reports found with a box, not found with the last sighting, and 404", async () => {
     const { t, store } = setup();
-    const a = await store.createJob("audio/a.webm");
-    const b = await store.createJob("audio/b.webm");
+    const a = await store.createJob({ audioKey: "audio/a.webm" }, "web");
+    const b = await store.createJob({ audioKey: "audio/b.webm" }, "web");
     t.now += DONE_AFTER_MS;
     const found = await (await getJob(store, a.id)).json();
     expect(found).toMatchObject({ status: "done", found: true });
@@ -106,5 +106,77 @@ describe("status", () => {
     const { store } = setup();
     const status = await (await getStatus(store)).json();
     expect(status.map((d: { device: string }) => d.device)).toEqual(["pi", "desktop"]);
+  });
+});
+
+describe("typed questions", () => {
+  it("creates a job from text and answers for the item named", async () => {
+    const { t, store } = setup();
+    const res = await postJob(store, post({ text: "  where are my glasses?  " }));
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+    t.now += DONE_AFTER_MS;
+    const job = await (await getJob(store, id)).json();
+    expect(job).toMatchObject({ status: "done", source: "web", transcript: "where are my glasses?", target: "glasses" });
+    expect(job.replyText).toContain("glasses");
+    expect(job.replyAudioUrl).toBeNull();
+  });
+
+  it("uses the recorded reply for an item that has one", async () => {
+    const { t, store } = setup();
+    const { id } = await (await postJob(store, post({ text: "have you seen my car keys" }))).json();
+    t.now += DONE_AFTER_MS;
+    const job = await (await getJob(store, id)).json();
+    expect(job).toMatchObject({ target: "keys", found: false });
+    expect(job.replyAudioUrl).toBeTruthy();
+  });
+
+  it("says so when no item is named", async () => {
+    const { t, store } = setup();
+    const { id } = await (await postJob(store, post({ text: "hello there" }))).json();
+    t.now += DONE_AFTER_MS;
+    const job = await (await getJob(store, id)).json();
+    expect(job).toMatchObject({ target: null, found: false, match: null, lastSighting: null });
+  });
+
+  it("rejects empty and overlong text", async () => {
+    const { store } = setup();
+    expect((await postJob(store, post({ text: "   " }))).status).toBe(400);
+    expect((await postJob(store, post({ text: "x".repeat(301) }))).status).toBe(400);
+  });
+});
+
+describe("camera button", () => {
+  const device = (body: BodyInit | null, headers: Record<string, string>) =>
+    new Request("http://x/api/device/jobs", { method: "POST", body, headers });
+
+  it("queues a device job from the Pi's recording and records the Pi as active", async () => {
+    const { t, store } = setup();
+    t.now += 60_000;
+    const res = await postDeviceJob(store, device(new Uint8Array([1, 2, 3]), { authorization: "Bearer secret", "content-type": "audio/webm" }), "secret");
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+    expect((await store.getJob(id))!.source).toBe("device");
+    expect(await getNextJob(store, withAuth("secret"), "secret").then((r) => r.json())).toEqual({ id });
+  });
+
+  it("rejects a wrong token, a non-audio type and an empty body", async () => {
+    const { store } = setup();
+    const ok = { authorization: "Bearer secret", "content-type": "audio/webm" };
+    expect((await postDeviceJob(store, device(new Uint8Array([1]), { ...ok, authorization: "Bearer nope" }), "secret")).status).toBe(401);
+    expect((await postDeviceJob(store, device(new Uint8Array([1]), { ...ok, "content-type": "text/plain" }), "secret")).status).toBe(400);
+    expect((await postDeviceJob(store, device(null, ok), "secret")).status).toBe(400);
+  });
+
+  it("finds the newest device job since a time, and nothing from before it", async () => {
+    const { t, store } = setup();
+    const since = new Date(t.now).toISOString();
+    expect((await getLatestJob(store, new URL(`http://x/?source=device&since=${since}`))).status).toBe(204);
+    t.now += 10;
+    await store.createJob({ text: "where is my wallet" }, "web");
+    const { id } = await store.createJob({ audioKey: "audio/d.webm" }, "device");
+    const res = await getLatestJob(store, new URL(`http://x/?source=device&since=${since}`));
+    expect(await res.json()).toEqual({ id });
+    expect((await getLatestJob(store, new URL("http://x/?source=pi&since=x"))).status).toBe(400);
   });
 });
