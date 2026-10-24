@@ -7,11 +7,11 @@ import AI_Voice from "@/components/kokonutui/ai-voice";
 import ReceiptPrinter, { type SlipLine } from "@/components/kokonutui/receipt-printer";
 import SyncedTranscript from "@/components/kokonutui/synced-transcript";
 import type { JobView } from "@/lib/data/types";
-import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
+import { clockTime, percent, placeWords } from "@/lib/format";
 import { useDeviceStatus } from "./device-status";
 import { CogTrain } from "./cog-train";
 import { Narrator } from "./narrator";
-import { SnapshotFrame } from "./snapshot-frame";
+import { CameraView } from "./camera-view";
 
 export const POLL_MS = 750;
 export const MIN_HOLD_S = 0.5;
@@ -247,7 +247,8 @@ export function AskPanel() {
 
   return (
     <div className="grid flex-1 gap-4 md:grid-cols-12">
-      <section aria-labelledby="ask-title" className="self-start bg-panel p-5 md:col-span-8">
+      <div className="flex flex-col gap-4 self-start md:col-span-8">
+      <section aria-labelledby="ask-title" className="bg-panel p-5">
         <h2 className="font-semibold text-[15px]" id="ask-title">
           Ask where something is
         </h2>
@@ -334,9 +335,10 @@ export function AskPanel() {
             )}
           </div>
         </div>
-
-        {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
       </section>
+
+      <CameraView answer={answer} answeredAt={phase.kind === "answered" ? phase.at : 0} working={working} />
+      </div>
 
       {/* The right column runs to the bottom of the page: the answer slip at its top once
           there is one, and the narrator standing in the page's bottom-right corner, facing
@@ -348,70 +350,12 @@ export function AskPanel() {
           </aside>
         )}
         {/* Reserves his corner, so content never runs under him on wider screens. */}
-        <div aria-hidden className="mt-auto hidden h-[400px] md:block" />
+        <div aria-hidden className="mt-auto hidden h-[470px] md:block" />
         <Narrator
-          className="ml-auto w-56 md:pointer-events-none md:fixed md:right-0 md:bottom-0 md:z-30 md:w-[340px] md:max-w-none"
+          className="ml-auto w-56 md:pointer-events-none md:fixed md:right-0 md:bottom-0 md:z-30 md:w-[400px] md:max-w-none"
           speaking={speaking}
         />
       </div>
     </div>
-  );
-}
-
-function AnswerPhoto({ job, now }: { job: JobView; now: number }) {
-  const name = job.target ?? "item";
-  if (job.found && job.match) {
-    const m = job.match;
-    const place = placeWords(m.zone);
-    return (
-      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="found">
-        <SnapshotFrame
-          alt={`Camera photo with the ${name} marked`}
-          height={m.snapshot.height}
-          lens={{ box: m.box, label: name, confidence: m.confidence }}
-          priority
-          src={m.snapshot.url}
-          width={m.snapshot.width}
-        />
-        <figcaption className="text-[15px]">
-          <span className="block font-semibold capitalize">{name}</span>
-          <span className="block">{place ? `On ${place}` : "Place not marked"}</span>
-          <span className="figures block text-ink-muted">{percent(m.confidence)} sure</span>
-          <span className="figures block text-ink-muted">Photo at {clockTime(m.seenAt)}</span>
-        </figcaption>
-      </figure>
-    );
-  }
-  if (job.lastSighting) {
-    const s = job.lastSighting;
-    const place = placeWords(s.zone);
-    return (
-      <figure className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]" data-testid="not-found">
-        <SnapshotFrame
-          alt={`Last photo with the ${name}, ${relativeTime(s.seenAt, now)}`}
-          height={s.snapshot.height}
-          lens={{ box: s.box, label: name }}
-          src={s.snapshot.url}
-          width={s.snapshot.width}
-        />
-        <figcaption className="text-[15px]">
-          <span className="block font-semibold">Not in view right now</span>
-          <span className="block">
-            Last seen {relativeTime(s.seenAt, now)}
-            {place ? ` on ${place}` : ""}
-          </span>
-          {job.itemId && (
-            <Link className="mt-2 block underline underline-offset-4" href={`/items/${job.itemId}`}>
-              See where the {name} {name.endsWith("s") ? "have" : "has"} been
-            </Link>
-          )}
-        </figcaption>
-      </figure>
-    );
-  }
-  return (
-    <p className="mt-6 text-[15px]" data-testid="never-seen">
-      The camera has not seen the {name} yet. Put it somewhere in view and it will be remembered.
-    </p>
   );
 }

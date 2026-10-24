@@ -189,3 +189,10 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   expect(await page.locator("[data-lens-ring]").first().getAttribute("stroke-dasharray")).toBeNull();
   await expect(page.getByTestId("answer")).toBeVisible();
 });
+
+test("before asking, the camera view shows the latest photo", async ({ page }) => {
+  await page.goto("/");
+  const view = page.getByTestId("camera-view");
+  await expect(view.getByRole("img", { name: "Latest camera photo" })).toBeVisible();
+  await expect(view).toContainText("Ask, and the item you name is circled here.");
+});
