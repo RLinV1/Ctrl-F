@@ -41,6 +41,7 @@ S3_ENDPOINT               # e.g. http://localhost:8333
 S3_BUCKET
 S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY
+S3_REGION                 # AWS only; empty S3_ENDPOINT means real AWS S3. Pi uploads to incoming/
 YOLO_WEIGHTS_PATH         # local path to best.pt
 WEB_BASE_URL              # Pi polls this, e.g. http://192.168.1.20:3000
 PI_JOB_TOKEN              # bearer token the Pi uses on /api/jobs/next

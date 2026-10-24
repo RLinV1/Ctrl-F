@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Take one photo with a USB (UVC) webcam. Usage: python3 capture.py (prints the random file name)"""
+import os
+import shutil
+import subprocess
+import sys
+import uuid
+
+import boto3
+
+
+def capture() -> str:
+    path = f"{uuid.uuid4().hex[:8]}.jpg"
+    if shutil.which("fswebcam") is None:
+        sys.exit("fswebcam not found. Run: sudo apt install fswebcam")
+    # rpicam-* only drives CSI cameras; USB webcams are V4L2, so use fswebcam.
+    # -S 10: skip first frames so auto-exposure settles
+    subprocess.run(
+        ["fswebcam", "-r", "1280x720", "-S", "10", "--no-banner", path], check=True
+    )
+    if bucket := os.environ.get("S3_BUCKET"):
+        # Empty S3_ENDPOINT = real AWS S3. Same env names as the rest of the repo.
+        boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("S3_ENDPOINT") or None,
+            aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
+            region_name=os.environ.get("S3_REGION", "us-east-1"),
+        ).upload_file(path, bucket, f"incoming/{path}")
+    return path
+
+
+if __name__ == "__main__":
+    print(capture())
