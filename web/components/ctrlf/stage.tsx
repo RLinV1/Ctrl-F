@@ -83,15 +83,19 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
 
   // Typewriter when there is no voice to follow.
   const total = words.length;
+  // The voice is still being made: hold the text so it appears with the speech, not before it.
+  const waiting = Boolean(answer?.replyPending);
   useEffect(() => {
-    if (timed || !id) return;
+    if (timed || waiting || !id) return;
     const handle = window.setInterval(() => setTyped((n) => (n >= total ? n : n + 1)), TYPE_MS * 4);
     return () => window.clearInterval(handle);
-  }, [timed, id, total]);
+  }, [timed, waiting, id, total]);
 
   let shown = total;
   let current = -1;
-  if (timed && !ended) {
+  if (waiting) {
+    shown = 0;
+  } else if (timed && !ended) {
     const starts = answer!.replyTimings!.map((t) => t.start);
     const spoken = starts.filter((s) => s <= time).length;
     // Under reduced motion the whole reply shows at once; the spoken word is still marked.
