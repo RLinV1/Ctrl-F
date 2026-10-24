@@ -31,3 +31,6 @@ test-results/
 Thumbs.db
 .idea/
 .vscode/
+
+# TasteSkill working files
+.taste-skill/

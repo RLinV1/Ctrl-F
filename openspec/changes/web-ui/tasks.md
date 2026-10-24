@@ -1,8 +1,8 @@
 ## 1. Scaffold
 
-- [ ] 1.1 Create `web/` with Next.js (App Router, TypeScript strict, pnpm), Vitest, and Playwright; verify `pnpm build`, `pnpm exec vitest run` (zero tests), and `pnpm exec playwright test` (zero tests) all succeed
-- [ ] 1.2 Run `shadcn init` (Tailwind v4, `components.json`), register `"@kokonutui": "https://kokonutui.com/r/{name}.json"` in `components.json`, and add `animejs` v4; verify `pnpm build` succeeds and `pnpm dlx shadcn@latest view @kokonutui/ai-voice` resolves the registry item
-- [ ] 1.3 Add `.taste-skill/` and Playwright output folders to `.gitignore`, add `DATA_SOURCE` and `S3_PUBLIC_ENDPOINT` to `.env.example`, and verify `git status` shows no generated files after a build and a test run
+- [x] 1.1 Create `web/` with Next.js (App Router, TypeScript strict, pnpm), Vitest, and Playwright; verify `pnpm build`, `pnpm exec vitest run` (zero tests), and `pnpm exec playwright test` (zero tests) all succeed
+- [x] 1.2 Run `shadcn init` (Tailwind v4, `components.json`), register `"@kokonutui": "https://kokonutui.com/r/{name}.json"` in `components.json`, and add `animejs` v4; verify `pnpm build` succeeds and `pnpm dlx shadcn@latest view @kokonutui/ai-voice` resolves the registry item
+- [x] 1.3 Add `.taste-skill/` and Playwright output folders to `.gitignore`, add `DATA_SOURCE` and `S3_PUBLIC_ENDPOINT` to `.env.example`, and verify `git status` shows no generated files after a build and a test run
 
 ## 2. Data layer
 
