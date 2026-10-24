@@ -4,8 +4,8 @@ import { Camera, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
-import type { Item, JobView } from "@/lib/data/types";
-import { partOfDay, placeWords, relativeTime } from "@/lib/format";
+import type { JobView } from "@/lib/data/types";
+import { GREETINGS, GREETING_KEY, nextGreetingIndex } from "@/lib/greetings";
 import { useDeviceStatus } from "./device-status";
 import { HoldToTalk, SimulatePress, useCameraJobs, useElapsed } from "./ask-inputs";
 import { Stage } from "./stage";
@@ -151,30 +151,24 @@ async function submit(blob: Blob): Promise<string> {
   return (await jobRes.json()).id;
 }
 
-/** The narrator's opening line: the time of day and the last thing the camera saw. */
-function useGreeting() {
-  const [greeting, setGreeting] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/items", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((items: Item[]) => {
-        if (!alive) return;
-        const now = new Date();
-        const newest = items.find((i) => i.lastSeen);
-        const fact = newest?.lastSeen
-          ? `The ${newest.name} was the last thing seen, ${relativeTime(newest.lastSeen.seenAt, now.getTime())}${
-              newest.lastSeen.zone ? ` on ${placeWords(newest.lastSeen.zone)}` : ""
-            }.`
-          : "Nothing has been seen yet.";
-        setGreeting(`${partOfDay(now.getHours())}. ${fact} Where shall I look?`);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return greeting;
+// One greeting per page load: picked the first time it is read in the browser, then kept.
+let greetingIndex: number | null = null;
+function pickGreeting(): number {
+  if (greetingIndex !== null) return greetingIndex;
+  try {
+    greetingIndex = nextGreetingIndex(localStorage.getItem(GREETING_KEY));
+    localStorage.setItem(GREETING_KEY, String(greetingIndex));
+  } catch {
+    // Storage blocked (a private window, say): any of the lines will do.
+    greetingIndex = Math.floor(Math.random() * GREETINGS.length);
+  }
+  return greetingIndex;
+}
+
+/** The narrator's opening line, from the pool in lib/greetings.ts, a different one each reload. */
+function useGreeting(): string | null {
+  const index = useSyncExternalStore(noSubscribe, pickGreeting, () => -1);
+  return index < 0 ? null : GREETINGS[index];
 }
 
 /**
@@ -327,7 +321,7 @@ function AskSession() {
             ? "The camera has not picked this up. It may be offline or switched off. Check it, then ask again."
             : phase.kind === "failed"
               ? `That request failed. ${phase.message} Ask again to try once more.`
-              : (phase.kind === "idle" && phase.hint) || greeting || "Good day. Ask me where something is, and I shall find it.";
+              : (phase.kind === "idle" && phase.hint) || greeting || "";
 
   return (
     <div className="flex min-h-[calc(100dvh-120px)] flex-col gap-4">

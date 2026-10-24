@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { chooseMode, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, stubStatus, typeQuestion } from "./fixtures";
+import { chooseMode, expectGreeting, foundWallet, hold, job, replies, sighting, stubJob, stubMediaClock, stubStatus, typeQuestion } from "./fixtures";
+import { GREETINGS } from "../lib/greetings";
 
 test.describe("push-to-talk", () => {
   test("hold and release sends the question and shows an answer", async ({ page }) => {
@@ -229,10 +230,19 @@ test("after he finishes talking, the study fades and then the camera view takes 
   await expect(page.getByTestId("found-caption")).toContainText("on the desk");
 });
 
-test("the narrator greets with the last thing seen before any question", async ({ page }) => {
+test("the narrator greets with a line from the pool, the next one on each reload", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("dialogue")).toContainText("was the last thing seen");
-  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
+  const first = await expectGreeting(page);
+  await page.reload();
+  const second = await expectGreeting(page);
+  await page.reload();
+  const third = await expectGreeting(page);
+  const shown = [first, second, third].map((text) => GREETINGS.findIndex((g) => text.includes(g)));
+  expect(shown.every((i) => i >= 0)).toBe(true);
+  // In turn: each reload shows the line after the previous one.
+  expect(shown[1]).toBe((shown[0] + 1) % GREETINGS.length);
+  expect(shown[2]).toBe((shown[1] + 1) % GREETINGS.length);
+  await expect(page.getByTestId("dialogue")).not.toContainText("last thing seen");
 });
 
 test("the Ask page starts fresh after a reload or a visit to another page", async ({ page }) => {
@@ -241,7 +251,7 @@ test("the Ask page starts fresh after a reload or a visit to another page", asyn
   await typeQuestion(page, "where is my wallet");
   await expect(page.getByTestId("answer")).toBeVisible();
   await page.reload();
-  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
+  await expectGreeting(page);
   await expect(page.getByTestId("answer")).toHaveCount(0);
 
   await typeQuestion(page, "where is my wallet");
@@ -249,6 +259,6 @@ test("the Ask page starts fresh after a reload or a visit to another page", asyn
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Items" }).click();
   await expect(page).toHaveURL(/\/items$/);
   await page.goBack();
-  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
+  await expectGreeting(page);
   await expect(page.getByTestId("answer")).toHaveCount(0);
 });

@@ -47,7 +47,8 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 
 A steampunk detective (`public/narrator.png`) is the centre of the Ask page's visual-novel stage
 (`components/ctrlf/stage.tsx`): he stands in a brass-panelled study, and a dialogue box with a brass "Narrator" name
-tag speaks for him. His reply's words appear as the audio speaks them (typed out when there is no audio; all at once
+tag speaks for him. Before a question he says one of three greetings from `lib/greetings.ts`, the next one on each
+reload. His reply's words appear as the audio speaks them (typed out when there is no audio; all at once
 under reduced motion, with the spoken word still marked).
 
 ## Kokonut components in use
