@@ -23,7 +23,7 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 
 | Screen | Question | Biggest thing |
 | --- | --- | --- |
-| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question he speaks his reply, and the bobbing ▼ in the box (it dips on hover) fades him out to show the camera photo with the target circled, and back. The chat prompt sits at the bottom |
+| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question he speaks his reply in the study; when he finishes, the study fades to reveal the camera photo behind him, then he and the box fade out, leaving the photo with the target circled. The bobbing ▼ (it dips on hover) skips ahead; "▲ Narrator" brings him back. The chat prompt sits at the bottom |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
 | History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |

@@ -199,23 +199,34 @@ test("the camera view stays hidden until a question is asked", async ({ page }) 
   await expect(page.getByTestId("found").getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
 });
 
-test("the ▼ swaps the narrator for the camera's photo, and back", async ({ page }) => {
+test("the ▼ skips to the camera's photo, and Narrator brings him back", async ({ page }) => {
   await page.goto("/");
   await stubJob(page, foundWallet());
   await typeQuestion(page, "where is my wallet");
   const photo = page.getByTestId("camera-view");
-  const next = page.getByTestId("next");
-  // The narrator speaks first; the photo waits behind him.
+  // He talks first, in his study.
+  await expect(page.getByTestId("answer")).toBeVisible();
   await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
   await expect(photo).not.toHaveAttribute("data-shown", "true");
-  await expect(next).toHaveAccessibleName("Show the camera's photo");
-  await next.click();
+  await page.getByRole("button", { name: "Show the camera's photo" }).click();
   await expect(photo).toHaveAttribute("data-shown", "true");
   await expect(page.locator("[data-narrator-shown]")).toHaveCount(0);
   await expect(page.getByTestId("found-caption")).toBeVisible();
-  await next.click();
+  await page.getByTestId("back").click();
   await expect(photo).not.toHaveAttribute("data-shown", "true");
   await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
+});
+
+test("after he finishes talking, the study fades and then the camera view takes over", async ({ page }) => {
+  await page.goto("/");
+  // No voice: the reply types out, then the sequence runs on its own.
+  await stubJob(page, foundWallet({ replyAudioUrl: null, replyTimings: null }));
+  await typeQuestion(page, "where is my wallet");
+  await expect(page.getByTestId("answer")).toBeVisible();
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(1);
+  await expect(page.getByTestId("camera-view")).toHaveAttribute("data-shown", "true", { timeout: 12_000 });
+  await expect(page.locator("[data-narrator-shown]")).toHaveCount(0);
+  await expect(page.getByTestId("found-caption")).toContainText("on the desk");
 });
 
 test("the narrator greets with the last thing seen before any question", async ({ page }) => {

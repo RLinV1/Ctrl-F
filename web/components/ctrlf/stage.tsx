@@ -93,7 +93,9 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
   } else if (!timed && !reduced && !ended) {
     shown = typed;
   }
-  return { words, shown, current, onEnded: () => setEnded(true) };
+  // Finished: the voice ended, or (with no voice) the last word has been typed.
+  const done = timed ? ended : total > 0 && (reduced || typed >= total);
+  return { words, shown, current, done, onEnded: () => setEnded(true) };
 }
 
 export function Stage({
@@ -114,11 +116,27 @@ export function Stage({
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  // The narrator speaks first; the ▼ in the dialogue box brings the camera's photo forward.
-  const [photoShown, setPhotoShown] = useState(false);
+  // The answer plays out in three steps: the narrator talks in his study; when he is done the
+  // study fades away to reveal the camera's photo behind him; then he and his box fade out,
+  // leaving the photo. The ▼ skips ahead, and "Narrator" brings him back over the photo.
+  const [view, setView] = useState<"talk" | "reveal" | "photo">("talk");
   const photo = photoOf(answer);
   const name = answer?.target ?? "item";
-  const { words, shown, current, onEnded } = useReveal(answer, audioRef, playing, blocked);
+  const { words, shown, current, done, onEnded } = useReveal(answer, audioRef, playing, blocked);
+  const autoPlayed = useRef(false);
+  const hasVoice = Boolean(answer?.replyAudioUrl);
+  useEffect(() => {
+    // Once per answer, and not when the browser blocked the voice (the text must stay readable).
+    if (!(photo && done && !blocked) || autoPlayed.current) return;
+    autoPlayed.current = true;
+    const reveal = window.setTimeout(() => setView((v) => (v === "talk" ? "reveal" : v)), hasVoice ? 500 : 1500);
+    const leave = window.setTimeout(() => setView((v) => (v === "photo" ? v : "photo")), hasVoice ? 1500 : 2500);
+    return () => {
+      window.clearTimeout(reveal);
+      window.clearTimeout(leave);
+    };
+  }, [photo, done, blocked, hasVoice]);
+  const photoView = Boolean(photo) && view === "photo";
 
   // Play the reply once, as the photo appears. Keyed by the answer, so this runs per answer.
   const id = answer?.id;
@@ -178,29 +196,8 @@ export function Stage({
   return (
     <div className="w-full max-w-[1040px]" data-testid="stage">
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video">
-        <Backdrop />
-        {/* eslint-disable-next-line @next/next/no-img-element -- a transparent PNG; the optimiser is off locally */}
-        <img
-          alt="The narrator, a detective in a deerstalker with brass goggles and a pipe"
-          className={cn(
-            "absolute bottom-0 left-1/2 h-[92%] w-auto max-w-none -translate-x-1/2 select-none transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
-            photo && photoShown ? "translate-y-[6%] opacity-0" : "translate-y-0 opacity-100",
-          )}
-          data-narrator-shown={!(photo && photoShown) || undefined}
-          draggable={false}
-          src="/narrator.png"
-        />
-
         {photo && (
-          <div
-            aria-hidden={!photoShown}
-            className={cn(
-              "absolute inset-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
-              photoShown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-[4%] opacity-0",
-            )}
-            data-shown={photoShown || undefined}
-            data-testid="camera-view"
-          >
+          <div aria-hidden={view === "talk"} className="absolute inset-0" data-shown={photoView || undefined} data-testid="camera-view">
             <figure className="h-full w-full" data-testid={answer?.found ? "found" : "not-found"}>
               <SnapshotFrame
                 alt={answer?.found ? `Camera photo with the ${name} circled` : `Last photo with the ${name}`}
@@ -215,16 +212,53 @@ export function Stage({
             </figure>
           </div>
         )}
+        <div
+          className={cn(
+            "absolute inset-0 transition-opacity duration-700 ease-out",
+            photo && view !== "talk" ? "opacity-0" : "opacity-100",
+          )}
+          data-testid="backdrop"
+        >
+          <Backdrop />
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a transparent PNG; the optimiser is off locally */}
+        <img
+          alt="The narrator, a detective in a deerstalker with brass goggles and a pipe"
+          className={cn(
+            "absolute bottom-0 left-1/2 h-[92%] w-auto max-w-none -translate-x-1/2 select-none transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
+            photoView ? "translate-y-[6%] opacity-0" : "translate-y-0 opacity-100",
+          )}
+          data-narrator-shown={!photoView || undefined}
+          draggable={false}
+          src="/narrator.png"
+        />
 
-        {caption && (!photo || photoShown) && (
+        {caption && (!photo || photoView) && (
           <p className="absolute top-3 left-3 max-w-[80%] bg-ink/85 px-3 py-1.5 text-paper text-sm">{caption}</p>
+        )}
+        {photoView && (
+          <button
+            className="absolute right-3 bottom-3 flex items-center gap-2 bg-ink/85 px-3 py-1.5 text-paper text-sm hover:bg-ink"
+            data-testid="back"
+            onClick={() => setView("reveal")}
+            type="button"
+          >
+            <svg aria-hidden className="h-2.5 w-3 text-brass" viewBox="0 0 16 12">
+              <polygon fill="currentColor" points="0,12 16,12 8,0" />
+            </svg>
+            Narrator
+          </button>
         )}
 
         {/* The dialogue box, as in a visual novel: a name tag and the narrator's line. */}
         <section
           aria-label="Narrator"
           aria-live="polite"
-          className="absolute inset-x-[3%] bottom-[4%] min-h-[30%] border-brass border-t-2 bg-ink/85 px-5 pt-6 pb-4 text-paper"
+          aria-hidden={photoView || undefined}
+          className={cn(
+            "absolute inset-x-[3%] bottom-[4%] min-h-[30%] border-brass border-t-2 bg-ink/85 px-5 pt-6 pb-4 text-paper transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
+            photoView ? "pointer-events-none translate-y-[6%] opacity-0" : "translate-y-0 opacity-100",
+          )}
           data-testid={answer ? "answer" : "dialogue"}
         >
           <span className="absolute -top-4 left-4 bg-brass px-4 py-1 font-heading font-bold text-ink text-lg">{SPEAKER}</span>
@@ -261,15 +295,14 @@ export function Stage({
                 {playing ? <Pause aria-hidden className="size-4" fill="currentColor" /> : <Play aria-hidden className="size-4 translate-x-px" fill="currentColor" />}
               </button>
             )}
-            {photo && (
+            {photo && !photoView && (
               // The visual novel's "next" arrow: it bobs to invite a click, dips on hover, and
-              // swaps the narrator for the camera's photo (and back).
+              // skips ahead to the camera's photo.
               <button
-                aria-label={photoShown ? "Show the narrator" : "Show the camera's photo"}
-                aria-pressed={photoShown}
+                aria-label="Show the camera's photo"
                 className="group flex size-9 items-center justify-center text-brass outline-none focus-visible:ring-2 focus-visible:ring-brass"
                 data-testid="next"
-                onClick={() => setPhotoShown((s) => !s)}
+                onClick={() => setView("photo")}
                 type="button"
               >
                 <span className="motion-safe:animate-[vn-nudge_1.1s_ease-in-out_infinite] group-hover:[animation-play-state:paused]">
