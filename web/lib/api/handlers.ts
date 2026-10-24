@@ -34,8 +34,10 @@ export async function putAudio(store: Store, request: Request) {
   if (body.byteLength === 0) return error("empty upload", 400);
   try {
     await store.storeAudio(key, body, request.headers.get("content-type") ?? "audio/webm");
-  } catch {
-    return error("bad key", 400);
+  } catch (e) {
+    if ((e as Error).message === "bad key") return error("bad key", 400);
+    console.error("[upload]", e);
+    return error("The recording could not be stored.", 502);
   }
   return new Response(null, { status: 200 });
 }
