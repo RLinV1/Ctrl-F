@@ -26,6 +26,15 @@ export default function Mic() {
   const [says, setSays] = useState("");
   const recorder = useRef<MediaRecorder | null>(null);
   const video = useRef<HTMLVideoElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    const d = dialog.current;
+    if (!d) return;
+    if (modalOpen && !d.open) d.showModal();
+    if (!modalOpen && d.open) d.close();
+  }, [modalOpen]);
 
   // The camera is on as soon as this page opens (and shown live), so it is warm and ready when you speak.
   useEffect(() => {
@@ -103,7 +112,10 @@ export default function Mic() {
 
   async function finish(clip: Blob) {
     const photo = await takePhoto();
-    if (photo) setPhotoUrl(URL.createObjectURL(photo)); // show the snapshot at once, before transcribing
+    if (photo) {
+      setPhotoUrl(URL.createObjectURL(photo)); // pop the results up at once, before transcribing
+      setModalOpen(true);
+    }
     if (clip.size === 0) return trouble("no audio was captured from the microphone");
     if (!photo) return trouble("no camera is available, so no photo could be taken");
     setClipUrl(URL.createObjectURL(clip));
@@ -139,15 +151,7 @@ export default function Mic() {
       <h2>Speak to the mic</h2>
       <div className="speak">
         <div>
-          {/* The live view gives way to the snapshot after Stop; the video stays mounted so the camera keeps running. */}
-          <video ref={video} autoPlay muted playsInline style={photoUrl ? { display: "none" } : undefined} />
-          {photoUrl && (
-            <div style={{ position: "relative" }}>
-              <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
-              {result && <Overlay boxes={others} color="#777" dashed />}
-              {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
-            </div>
-          )}
+          <video ref={video} autoPlay muted playsInline />
         </div>
         <div>
           <button onClick={toggle} style={{ width: "100%", padding: "0.8rem" }}>{recording ? "Stop" : "Start"}</button>
@@ -167,6 +171,26 @@ export default function Mic() {
           )}
         </div>
       </div>
+      {/* Results popup: the snapshot with a box where the item is. The camera behind it keeps running. */}
+      <dialog ref={dialog} onClose={() => setModalOpen(false)} onClick={(e) => e.target === dialog.current && setModalOpen(false)}>
+        <h2>Result</h2>
+        {photoUrl && (
+          <div style={{ position: "relative" }}>
+            <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
+            {result && <Overlay boxes={others} color="#777" dashed />}
+            {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
+          </div>
+        )}
+        <StatusLine status={status} />
+        {says && <p><b>{says}</b></p>}
+        {result && (
+          <p className="out">
+            Green = what you asked for, gray = other things it knows. Detected:{" "}
+            {result.detections.map((d) => `${d.name} ${Math.round((d.conf ?? 0) * 100)}%`).join(", ") || "nothing"}.
+          </p>
+        )}
+        <button onClick={() => setModalOpen(false)}>Close</button>
+      </dialog>
     </section>
   );
 }
