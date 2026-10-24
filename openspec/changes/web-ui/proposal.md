@@ -15,6 +15,8 @@ Ctrl-F has detection work in progress (`feat/dev-test`, `feat/backend-foundation
 - **Schema additions:** a `jobs` table (with the matched snapshot and detection) and a `device_heartbeats` table.
 - **Contract change:** audio upload is split from job creation (`POST /api/uploads`, then `POST /api/jobs`) so the Pi can never claim a job whose audio is not stored yet.
 - Visual design follows the steampunk brand (fixed palette and type, gears and gauges only where they carry meaning) and the TasteSkill app-screen rules everywhere else.
+- Build the UI on Tailwind v4 and shadcn/ui, with selected Kokonut UI components (installed from its shadcn registry and restyled to the brand), and anime.js v4 for every animation we write ourselves.
+- The narrator reply highlights each word as the reply audio speaks it, when word timings are available.
 - Add Playwright tests in `web/e2e/` against the mock data layer.
 
 Implements PRD F1 (browser side: record and submit) and F9 (items, last-seen snapshot with overlay, history, lost count), plus the web half of the job hand-off. Prepares for F10 (Vercel) without deploying.
@@ -43,8 +45,9 @@ Implements PRD F1 (browser side: record and submit) and F9 (items, last-seen sna
 
 ## Impact
 
-- New directory `web/` with its own `package.json` (pnpm): Next.js, `postgres` (SQL client), `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`, Playwright.
-- Schema: new `jobs` and `device_heartbeats` tables. Alembic in `desktop/migrations` (on `feat/backend-foundation`) owns migrations, so the migration lands there; this branch carries the SQL and the docs.
+- New directory `web/` with its own `package.json` (pnpm): Next.js, Tailwind CSS v4, shadcn/ui (with the `@kokonutui` registry in `components.json`), `animejs` v4, `postgres` (SQL client), `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`, Vitest, Playwright. Kokonut components bring `motion` and `lucide-react` as their own dependencies.
+- Kokonut components used: `ai-voice`, `ai-loading`, `split-flap-text`, `receipt-printer`, `synced-transcript`, `contact-sheet`, `uptime-card`. Their source is copied into `web/components/kokonutui/` and owned by us.
+- Schema: new `jobs` and `device_heartbeats` tables; `jobs` also carries optional word timings for the reply audio. Alembic in `desktop/migrations` (on `feat/backend-foundation`) owns migrations, so the migration lands there; this branch carries the SQL and the docs.
 - New env vars: `DATA_SOURCE` (`postgres` | `mock`), `S3_PUBLIC_ENDPOINT`. Reused: `DATABASE_URL`, `S3_*`, `PI_JOB_TOKEN`, `UI_PASSWORD`.
-- `docs/ARCHITECTURE.md` (data model, request flow, web interfaces) and `docs/TECH_STACK.md` (env vars, SQL client instead of Drizzle) are updated.
+- `docs/ARCHITECTURE.md` (data model, request flow, web interfaces) and `docs/TECH_STACK.md` (env vars, SQL client instead of Drizzle, Tailwind v4, shadcn/ui, Kokonut UI, anime.js) are updated. The desktop's text-to-speech call is asked to also store word timings (documented, implemented on the desktop side).
 - New project dev tool: the TasteSkill skill (`.claude/skills/design-taste-frontend`); its working folder `.taste-skill/` is git-ignored.

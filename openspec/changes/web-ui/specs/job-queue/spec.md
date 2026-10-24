@@ -58,6 +58,10 @@ Hands each voice request from the browser to the Raspberry Pi and back: the web 
 - **WHEN** the job is `done` but text-to-speech failed
 - **THEN** the response has the reply text and no reply-audio URL
 
+#### Scenario: Reply with word timings
+- **WHEN** the job is `done` and the desktop stored word timings for the reply audio
+- **THEN** the response includes the timings as a list of `{word, start, end}` in seconds, in reply order
+
 #### Scenario: Unknown job
 - **WHEN** the id does not exist
 - **THEN** the response is `404`

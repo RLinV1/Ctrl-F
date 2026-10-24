@@ -50,6 +50,17 @@ When the job is done, the screen SHALL show the transcript and the reply text, p
 - **WHEN** the browser blocks audio playback
 - **THEN** the reply text is shown and the replay control is offered so the user can start the audio
 
+### Requirement: Follow the reply as it is spoken
+When the reply has word timings, the screen SHALL mark the word being spoken while the reply audio plays, and SHALL leave the whole reply plainly readable when audio is paused, finished, or has no timings.
+
+#### Scenario: Speaking with timings
+- **WHEN** the reply audio is 2.1 seconds in and the timings place "desk" from 2.0 to 2.3 seconds
+- **THEN** "desk" is marked as the current word
+
+#### Scenario: No timings
+- **WHEN** the reply has audio but no timings
+- **THEN** the reply text is shown without a moving mark and the audio plays normally
+
 ### Requirement: Mark the found item on its snapshot
 When the item was found, the screen SHALL show the snapshot with the matched box drawn at its position at every screen width, and name the item and its confidence as text beside the photo, not only inside the image.
 
@@ -67,6 +78,13 @@ When the item was not found, the screen SHALL say so and show the item's last si
 #### Scenario: Never seen
 - **WHEN** the job is done with `found: false` and no sighting exists
 - **THEN** the screen says the item has not been seen yet
+
+### Requirement: Respect reduced motion
+When the user prefers reduced motion, the Ask screen SHALL show the same states and content without travel, spin, or flip animations.
+
+#### Scenario: Reduced motion
+- **WHEN** reduced motion is preferred and a job is in progress, then finishes
+- **THEN** the progress state, reply, and marked snapshot appear without animated movement, and no content is missing
 
 ### Requirement: Offline and failure states
 The screen SHALL tell the user when the camera has not picked up the request (the job is stale while `pending`) and when processing failed, and SHALL let them try again.
