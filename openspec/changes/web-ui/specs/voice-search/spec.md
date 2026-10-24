@@ -13,6 +13,13 @@ The Ask screen SHALL be a single chat-style prompt with a menu inside it for cho
 - **WHEN** the user opens the menu and picks "Speak here"
 - **THEN** the menu reads "Speak here", the text field and Send are replaced by a hold-to-talk button, and the prompt says to hold the button and ask
 
+### Requirement: Visual-novel stage
+The Ask screen SHALL show the narrator on a stage with a dialogue box carrying his name tag. Before a question the box SHALL greet with the last thing seen; while a question is worked on it SHALL say which stage the job is at; once answered, the camera's photo SHALL appear on the stage behind the box with the item circled, the reply audio SHALL start by itself, and clicking the stage SHALL lower the photo to show the narrator and clicking again SHALL raise it.
+
+#### Scenario: Answer on the stage
+- **WHEN** a question about the wallet is answered as found
+- **THEN** the photo appears on the stage with the wallet circled, the reply plays, and a click lowers the photo while a second click raises it
+
 ### Requirement: Results appear only after asking
 The answer and the camera view SHALL NOT be shown until a question has been sent; once one is, the progress, the answer and the camera's photo appear below the prompt.
 

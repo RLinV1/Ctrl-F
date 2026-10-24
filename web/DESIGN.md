@@ -23,7 +23,7 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 
 | Screen | Question | Biggest thing |
 | --- | --- | --- |
-| Ask (`/`) | Where is it right now? | One chat-style prompt (type, speak, or the camera's button); after a question, the answer and the Camera view with the target circled |
+| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question, the camera photo slides in behind the box (target circled), his reply plays, and a click lowers or raises the photo. The chat prompt sits at the bottom |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
 | History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |
@@ -37,13 +37,17 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
 - **The cog train:** seven cogs in brass, dark brass, copper and iron that hop, turn and swell in a wave
   (anime.js `waapi.animate` with `stagger(75)`), shown only while a question is being worked on; still under
   reduced motion (`components/ctrlf/cog-train.tsx`).
-- **The flow-field background:** brass streams behind the frame, added at the team's request for a stronger
-  steampunk feel. This one is decoration, not information; it stays behind opaque panels so it never sits under text.
+- **The halftone background:** large cogs printed as a brass halftone screen behind the frame (Kokonut
+  `halftone-background`, image `public/halftone-cogs.svg`), added at the team's request. Decoration, not
+  information: the sidebar has a paper backing and panels stay opaque, so it never sits under text. It replaced the
+  earlier flow-field background.
 
 ## The narrator
 
-A steampunk detective (`components/ctrlf/narrator.tsx`, `public/narrator.png`) voices answers in the brand. He is
-off the Ask page for now, while it is rebuilt around the chat prompt; the component is kept for later.
+A steampunk detective (`public/narrator.png`) is the centre of the Ask page's visual-novel stage
+(`components/ctrlf/stage.tsx`): he stands in a brass-panelled study, and a dialogue box with a brass "Narrator" name
+tag speaks for him. His reply's words appear as the audio speaks them (typed out when there is no audio; all at once
+under reduced motion, with the spoken word still marked).
 
 ## Kokonut components in use
 

@@ -112,7 +112,8 @@ No decorative gears, rivets, textures, gradients, or shadows elsewhere. Radius i
 | `split-flap-text` | Items and history: "last seen" time | Flips only when the value changes, never on first paint; reduced motion swaps text |
 | `contact-sheet` | Item history | Each frame is a sighting; its marker circle is replaced by our box overlay with the brass lens (Decision 12) |
 | `uptime-card` | Status area | Only its header pattern (title, summary line, a row per device) is used, with our gauges; the day bars are its whole body and there is no history to draw, so the component file itself is not kept |
-| `flow-field` | Background of every screen | Brass streams drifting behind the paper frame (density 1, speed 0.55), showing faintly through a translucent sheet; panels stay opaque so text sits on solid paper; still frame under reduced motion |
+| `halftone-background` | Background of every screen | Cogs printed as brass halftone dots (`public/halftone-cogs.svg`), `inkClassName` added for the dot colour, loupe off; replaced `flow-field` |
+| `flow-field` | Was the background (replaced, kept) | Brass streams drifting behind the paper frame (density 1, speed 0.55), showing faintly through a translucent sheet; panels stay opaque so text sits on solid paper; still frame under reduced motion |
 
 Not used: `gradient-button`, `loader`, `liquid-glass-card`, and the other hero backgrounds, and anything without a job on these screens. `flow-field` was added later at the team's request for a stronger steampunk feel; it is a deliberate exception to TasteSkill's no-decorative-background rule, recorded here and in `web/DESIGN.md`. Alternative considered: hand-built components on TasteSkill's `app.css`. Rejected by the team in favour of Kokonut's interaction work; the cost is the restyle pass per component.
 

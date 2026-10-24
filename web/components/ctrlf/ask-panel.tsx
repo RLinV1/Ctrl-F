@@ -3,14 +3,12 @@
 import { Camera, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import AILoadingState, { type AgentStep } from "@/components/kokonutui/ai-loading";
 import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
-import SyncedTranscript from "@/components/kokonutui/synced-transcript";
-import type { JobView } from "@/lib/data/types";
-import { CameraView } from "./camera-view";
-import { CogTrain } from "./cog-train";
+import type { Item, JobView } from "@/lib/data/types";
+import { partOfDay, placeWords, relativeTime } from "@/lib/format";
 import { useDeviceStatus } from "./device-status";
 import { HoldToTalk, SimulatePress, useCameraJobs, useElapsed } from "./ask-inputs";
+import { Stage } from "./stage";
 
 /** The three ways to ask, picked from the menu inside the prompt. */
 export type AskMode = "speak" | "type" | "camera";
@@ -153,22 +151,38 @@ async function submit(blob: Blob): Promise<string> {
   return (await jobRes.json()).id;
 }
 
-function stepsFor(job: JobView | null): AgentStep[] {
-  const claimed = job?.status === "claimed";
-  return [
-    { id: "sent", label: "Request sent", status: "done" },
-    { id: "photo", label: claimed ? "Camera took a photo" : "Waiting for the camera", status: claimed ? "done" : "running" },
-    { id: "look", label: "Looking for it", status: claimed ? "running" : "pending" },
-  ];
+/** The narrator's opening line: the time of day and the last thing the camera saw. */
+function useGreeting() {
+  const [greeting, setGreeting] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/items", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((items: Item[]) => {
+        if (!alive) return;
+        const now = new Date();
+        const newest = items.find((i) => i.lastSeen);
+        const fact = newest?.lastSeen
+          ? `The ${newest.name} was the last thing seen, ${relativeTime(newest.lastSeen.seenAt, now.getTime())}${
+              newest.lastSeen.zone ? ` on ${placeWords(newest.lastSeen.zone)}` : ""
+            }.`
+          : "Nothing has been seen yet.";
+        setGreeting(`${partOfDay(now.getHours())}. ${fact} Where shall I look?`);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return greeting;
 }
 
-
 export function AskPanel() {
+  const greeting = useGreeting();
   const { mic, start, stop } = useRecorder();
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [mode, setMode] = useState<AskMode>("type");
-  const [blocked, setBlocked] = useState(false);
   const holdRef = useRef<Promise<boolean> | null>(null);
   const recording = phase.kind === "recording";
   const elapsed = useElapsed(recording);
@@ -203,7 +217,6 @@ export function AskPanel() {
   }, [jobId]);
 
   const onHoldStart = () => {
-    setBlocked(false);
     setPhase({ kind: "recording" });
     holdRef.current = start();
   };
@@ -231,7 +244,6 @@ export function AskPanel() {
   };
 
   const askText = async (text: string) => {
-    setBlocked(false);
     setPhase({ kind: "sending" });
     try {
       const res = await fetch("/api/jobs", {
@@ -248,7 +260,6 @@ export function AskPanel() {
   };
 
   const onCameraJob = useCallback((id: string) => {
-    setBlocked(false);
     setPhase({ kind: "waiting", job: null, jobId: id });
   }, []);
 
@@ -257,8 +268,6 @@ export function AskPanel() {
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
-  // The camera view and the answer appear only once a question has been asked.
-  const asked = phase.kind !== "idle" && phase.kind !== "recording";
   useCameraJobs(mode === "camera" && !working, onCameraJob);
 
   const changeMode = (next: string) => {
@@ -292,8 +301,33 @@ export function AskPanel() {
     action = !working && !cameraOffline ? <SimulatePress /> : null;
   }
 
+  const line =
+    phase.kind === "recording"
+      ? "I am listening…"
+      : phase.kind === "sending"
+        ? "Sending your question…"
+        : phase.kind === "waiting"
+          ? phase.job?.status === "claimed"
+            ? "The camera has a photo. Looking for it…"
+            : "Waiting for the camera to take a photo…"
+          : phase.kind === "offline"
+            ? "The camera has not picked this up. It may be offline or switched off. Check it, then ask again."
+            : phase.kind === "failed"
+              ? `That request failed. ${phase.message} Ask again to try once more.`
+              : (phase.kind === "idle" && phase.hint) || greeting || "Good day. Ask me where something is, and I shall find it.";
+
   return (
-    <div className="flex max-w-[760px] flex-col gap-4">
+    <div className="flex min-h-[calc(100dvh-120px)] flex-col gap-4">
+      <div className="flex flex-1 items-center justify-center" data-phase={phase.kind}>
+        <Stage
+          answer={answer}
+          answeredAt={phase.kind === "answered" ? phase.at : 0}
+          key={answer?.id ?? "idle"}
+          line={line}
+          working={working}
+        />
+      </div>
+      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] bg-sheet/90 pb-4">
       <AI_Prompt
         action={action}
         body={body}
@@ -324,54 +358,8 @@ export function AskPanel() {
           <Link className="underline underline-offset-4" href="/items">Items</Link>.
         </p>
       )}
-      {phase.kind === "idle" && phase.hint && (
-        <p className="text-sm" role="status">
-          {phase.hint}
-        </p>
-      )}
+      </div>
 
-      {asked && (
-        <section aria-label="Answer" aria-live="polite" className="bg-panel p-5" data-phase={phase.kind}>
-          {working && (
-            <div>
-              <CogTrain className="mb-3" />
-              <AILoadingState
-                className="justify-start"
-                collapseWhenDone={false}
-                steps={phase.kind === "waiting" ? stepsFor(phase.job) : [{ id: "sent", label: "Sending your question", status: "running" }]}
-              />
-            </div>
-          )}
-          {phase.kind === "offline" && (
-            <div role="alert">
-              <p className="font-semibold text-[17px]">The camera has not picked this up.</p>
-              <p className="mt-1 text-ink-muted">It may be offline or switched off. Check it, then ask again.</p>
-            </div>
-          )}
-          {phase.kind === "failed" && (
-            <div role="alert">
-              <p className="font-semibold text-[17px] text-copper">That request failed.</p>
-              <p className="mt-1 text-ink-muted">{phase.message} Ask again to try once more.</p>
-            </div>
-          )}
-          {answer && (
-            <div data-testid="answer">
-              {answer.transcript && <p className="text-ink-muted text-sm">You asked: “{answer.transcript}”</p>}
-              <SyncedTranscript
-                className="mt-2"
-                key={answer.id}
-                onAutoplayBlocked={() => setBlocked(true)}
-                src={answer.replyAudioUrl}
-                text={answer.replyText ?? ""}
-                timings={answer.replyTimings}
-              />
-              {blocked && <p className="mt-2 text-ink-muted text-sm">Press play to hear the answer.</p>}
-            </div>
-          )}
-        </section>
-      )}
-
-      {asked && <CameraView answer={answer} answeredAt={phase.kind === "answered" ? phase.at : 0} working={working} />}
     </div>
   );
 }

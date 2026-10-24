@@ -6,7 +6,7 @@ test.describe("push-to-talk", () => {
     await page.goto("/");
     await hold(page, 1500);
     await expect(page.locator('[data-phase="sending"], [data-phase="waiting"]')).toBeVisible();
-    await expect(page.getByText("Request sent")).toBeVisible();
+    await expect(page.getByText(/Sending your question|Waiting for the camera|Looking for it/)).toBeVisible();
     await expect(page.getByTestId("answer")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/You asked: “/)).toBeVisible();
   });
@@ -54,8 +54,7 @@ test.describe("while the job runs", () => {
     await stubJob(page, job({ status: "claimed", claimedAt: new Date().toISOString() }));
     await page.goto("/");
     await hold(page, 900);
-    await expect(page.getByText("Camera took a photo")).toBeVisible();
-    await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+    await expect(page.getByText("The camera has a photo. Looking for it…")).toBeVisible();
     await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
   });
 
@@ -107,8 +106,8 @@ test.describe("the answer", () => {
     const found = page.getByTestId("found");
     await expect(found).toBeVisible();
     await expect(found.getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
-    await expect(found).toContainText("91% sure");
-    await expect(found).toContainText("On the desk");
+    await expect(page.getByTestId("found-caption")).toContainText("91% sure");
+    await expect(page.getByTestId("found-caption")).toContainText("on the desk");
     await expect(page.getByTestId("answer")).toContainText(replies["reply-wallet"].text.split(" ").slice(0, 3).join(" "));
     await expect(page.getByTestId("reply-play")).toBeVisible();
   });
@@ -154,10 +153,10 @@ test.describe("the answer", () => {
     );
     await page.goto("/");
     await hold(page, 900);
-    const notFound = page.getByTestId("not-found");
-    await expect(notFound).toContainText("Not in view right now");
-    await expect(notFound).toContainText("Last seen 3 h ago on the side table");
-    await expect(notFound.getByRole("link", { name: "See where the keys have been" })).toHaveAttribute("href", "/items/item-keys");
+    await expect(page.getByTestId("not-found")).toBeVisible();
+    const stage = page.getByTestId("stage");
+    await expect(stage).toContainText("Not in view · last seen 3 h ago on the side table");
+    await expect(stage.getByRole("link", { name: "See where the keys have been" })).toHaveAttribute("href", "/items/item-keys");
   });
 
   test("never seen: says so", async ({ page }) => {
@@ -173,7 +172,7 @@ test("reduced motion: every state appears with nothing moving", async ({ page },
   await stubJob(page, job({ status: "claimed", claimedAt: new Date().toISOString() }));
   await page.goto("/");
   await hold(page, 900);
-  await expect(page.locator("output", { hasText: "Looking for it" })).toBeVisible();
+  await expect(page.getByText("The camera has a photo. Looking for it…")).toBeVisible();
   await expect(page.getByRole("img", { name: "Working on it" })).toBeVisible();
   await page.waitForTimeout(600);
   const cogAnimations = await page.evaluate(
@@ -195,4 +194,22 @@ test("the camera view stays hidden until a question is asked", async ({ page }) 
   await typeQuestion(page, "where is my wallet");
   await expect(page.getByTestId("camera-view")).toBeVisible();
   await expect(page.getByTestId("found").getByRole("img", { name: "wallet marked", exact: true })).toBeVisible();
+});
+
+test("clicking the stage lowers the photo to show the narrator, and raises it again", async ({ page }) => {
+  await page.goto("/");
+  await stubJob(page, foundWallet());
+  await typeQuestion(page, "where is my wallet");
+  const photo = page.getByTestId("camera-view");
+  await expect(photo).toHaveAttribute("data-shown", "true");
+  await photo.click({ position: { x: 200, y: 60 } });
+  await expect(photo).not.toHaveAttribute("data-shown", "true");
+  await page.getByRole("button", { name: "Show the photo" }).click();
+  await expect(photo).toHaveAttribute("data-shown", "true");
+});
+
+test("the narrator greets with the last thing seen before any question", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("dialogue")).toContainText("was the last thing seen");
+  await expect(page.getByTestId("dialogue")).toContainText("Where shall I look?");
 });

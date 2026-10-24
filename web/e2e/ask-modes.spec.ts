@@ -37,5 +37,4 @@ test("the camera button mode answers a press from the camera", async ({ page }) 
   await expect(page.getByTestId("camera-button")).toContainText("Listening for the camera button");
   await page.getByRole("button", { name: "Simulate a press" }).click();
   await expect(page.getByTestId("answer")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("camera-view")).toBeVisible();
 });
