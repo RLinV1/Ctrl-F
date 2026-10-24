@@ -76,6 +76,8 @@ export class S3Store implements Store {
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
   private results: { at: number; rows: StoredResult[] } | null = null;
+  private known: { at: number; list: string[] } | null = null;
+  private parsed = new Map<string, Result>(); // result files never change once written, so each is downloaded once
 
   constructor() {
     const config = (endpoint?: string) => ({
@@ -89,6 +91,7 @@ export class S3Store implements Store {
     this.client = new S3Client(config(process.env.S3_ENDPOINT));
     // Signed URLs go to the browser, so they may need a different host than the server uses.
     this.signer = new S3Client(config(process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT));
+    void this.knownItems(); // warm the caches so the first question is as fast as the rest
   }
 
   private async getJson<T>(key: string): Promise<T | null> {
@@ -127,11 +130,17 @@ export class S3Store implements Store {
       await Promise.all(
         newest.map(async (f) => {
           const id = f.key.slice("results/".length, -"_result.json".length);
-          const result = await this.getJson<Result>(f.key).catch(() => null);
+          const cacheKey = `${f.key}@${+f.at}`;
+          let result = this.parsed.get(cacheKey) ?? null;
+          if (!result) {
+            result = await this.getJson<Result>(f.key).catch(() => null);
+            if (result) this.parsed.set(cacheKey, result);
+          }
           return result ? { id, at: f.at.toISOString(), result } : null;
         }),
       )
     ).filter((r): r is StoredResult => r !== null);
+    if (this.parsed.size > 300) this.parsed.clear();
     this.results = { at: Date.now(), rows };
     return rows;
   }
@@ -158,14 +167,16 @@ export class S3Store implements Store {
     };
   }
 
-  /** What the running model can find: the class list in the newest result that has one, else the trained classes. */
+  /** What the running model can find: the class list in the newest result that has one, else the trained classes. Cached for a minute. */
   private async knownItems(): Promise<string[]> {
+    if (this.known && Date.now() - this.known.at < 60_000) return this.known.list;
     try {
       const withList = (await this.recentResults()).find((r) => r.result.known?.length);
-      return withList?.result.known ?? KNOWN_ITEMS;
+      this.known = { at: Date.now(), list: withList?.result.known ?? KNOWN_ITEMS };
     } catch {
       return KNOWN_ITEMS;
     }
+    return this.known.list;
   }
 
   async createJob(audio: Uint8Array, contentType: string): Promise<JobView> {

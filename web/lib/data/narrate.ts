@@ -18,7 +18,7 @@ export type Result = {
 /** Used until a result tells us what the running model can find: the classes in training/classes.py on main. */
 export const KNOWN_ITEMS = ["phone", "glasses", "remote", "watch", "headphones", "keys", "wallet", "airpods case", "airpods", "charger"];
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite" // about 0.6 s a reply; "gemini-flash-lite-latest" took about 4 s;
 const DEFAULT_VOICE = "JBFqnCBsd6RMkjVDRZzb"; // George, British
 
 const SYSTEM_PROMPT = `You are Sherlock Holmes, reborn as a witty steampunk inventor-detective, and you are the voice of Ctrl-F, a brass-and-gears device that finds lost belongings.
