@@ -47,7 +47,7 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 | F7 | Mark an item "lost" when a request finds no match. Increment its lost count. |
 | F8 | Generate a short spoken reply (Gemini as a witty steampunk narrator, ElevenLabs TTS) with location in the frame and last-seen time. |
 | F9 | Web UI lists items, last-seen snapshot with bbox overlay, history, and lost count. |
-| F10 | Web UI hosted on Vercel at a custom GoDaddy domain. |
+| F10 | Web UI hosted on Vercel at a custom GoDaddy domain. Deferred: v1 runs locally with Docker Compose. See `docs/TECH_STACK_LIVE.md`. |
 
 ## Theme
 
@@ -69,7 +69,7 @@ Steampunk. Brass, copper, aged paper, gears, gauges, Victorian type. It applies 
 ## Risks and open questions
 
 - **COCO has no keys, wallet, or earbuds.** Stock YOLO cannot find them. Decision: we train (fine-tune) YOLO on our own labeled images of the target items. Plan in `docs/TRAINING.md`. Only trained classes can be found, so the class list defines what Ctrl-F supports.
-- **Vercel cannot reach the desktop or Pi.** The desktop must push results to the web API (outbound HTTPS). Do not expose the desktop to the internet.
+- **Vercel cannot reach the desktop or Pi.** The Pi polls the web API for jobs (outbound only) and forwards photos to the desktop on the LAN. Do not expose the desktop or Pi to the internet.
 - **Storage choice.** Managed (Cloudflare R2 or Supabase Storage + Neon/Supabase Postgres) vs self-hosted SeaweedFS. Default: managed. SeaweedFS needs a VPS.
 - **Trigger mode.** On-demand capture only (v1) vs periodic background snapshots (builds history without asking). Periodic snapshots make "last seen" much more useful; decide after v1 works.
 - **Audio.** Decided: the website records the mic and plays the reply, since the Pi has no mic. Wake word is out of scope; the UI uses push-to-talk.
@@ -81,5 +81,5 @@ Steampunk. Brass, copper, aged paper, gears, gauges, Victorian type. It applies 
 2. M1: Pi capture -> desktop receive -> YOLO detect -> print result (no voice, no web).
 3. M2: Voice in (STT, target to YOLO) and voice out (Gemini narrator + TTS).
 4. M3: Postgres + storage, sighting history, lost counts.
-5. M4: Next.js UI, deploy to Vercel, GoDaddy domain.
+5. M4: Next.js UI running locally via Docker Compose. Deploy to Vercel and the GoDaddy domain after that (see `docs/TECH_STACK_LIVE.md`).
 6. M5: Periodic snapshots, open-vocabulary detection tuning, polish.

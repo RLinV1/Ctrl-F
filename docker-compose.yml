@@ -1,0 +1,33 @@
+# Local data services. Run: docker compose up -d
+# The web app and desktop (YOLO) service are added here once web/ and desktop/ exist.
+# The Raspberry Pi runs on the Pi itself, not in Docker.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ctrlf
+      POSTGRES_PASSWORD: ctrlf
+      POSTGRES_DB: ctrlf
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ctrlf"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible object storage. Local only: runs without auth.
+  seaweedfs:
+    image: chrislusf/seaweedfs
+    command: server -dir=/data -s3 -s3.port=8333
+    ports:
+      - "8333:8333"
+    volumes:
+      - seaweed:/data
+
+volumes:
+  pgdata:
+  seaweed:

@@ -41,7 +41,7 @@ Desktop: `pytest` with a fixture JPEG and a stubbed model for contract tests, pl
 
 ## Risks / Trade-offs
 
-- [Stock COCO weights cannot detect keys or wallets] → M1 verifies the pipeline with COCO items (cup, phone, laptop). Custom classes arrive with KAN-23 and KAN-24.
+- [Stock COCO weights cannot detect keys or wallets] → M1 verifies the pipeline with COCO items (cup, phone, laptop). Custom classes arrive with the training work in `docs/TRAINING.md`.
 - [Pi camera libraries differ by OS release and camera module] → Isolate behind `grab_jpeg()`; record the exact working setup in `pi/README.md`.
 - [Large JPEGs over Wi-Fi add latency] → Cap capture resolution (default 1280 px wide) and JPEG quality; make both configurable.
 - [No auth on `/detect`] → Acceptable on a private LAN for M1; the desktop binds to the LAN interface only and must not be port-forwarded.
