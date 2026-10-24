@@ -10,14 +10,14 @@ Ctrl-F cannot do anything until a photo from the Raspberry Pi can be turned into
 - Add a small Pi-side relay script that captures a frame and posts it to the desktop (the relay role the Pi will keep in later milestones). Job polling is out of scope here.
 - Add a developer check: run the relay once, print detections for a target.
 
-Implements PRD F3, F4, F5. Jira: KAN-4, KAN-9, KAN-10, KAN-11.
+Implements PRD F3, F4, F5.
 
 ## Non-goals
 
 - Voice: no microphone, STT, narrator, or TTS (M2).
 - Web UI, job queue, `/api/jobs/next` polling (M2 and M4).
 - Postgres, object storage, sighting history, lost counts (M3).
-- Training the model. M1 runs whatever weights `YOLO_WEIGHTS_PATH` points to; a pretrained COCO model is enough to prove the pipeline. Custom training is tracked in KAN-23 and KAN-24.
+- Training the model. M1 runs whatever weights `YOLO_WEIGHTS_PATH` points to; a pretrained COCO model is enough to prove the pipeline. Custom training is planned in `docs/TRAINING.md`.
 - Periodic scanning.
 
 ## Capabilities
