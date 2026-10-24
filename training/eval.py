@@ -8,6 +8,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from datacfg import resolved
+
 DATA = Path(__file__).resolve().parent / "data.yaml"
 TARGET_RECALL = 0.8
 
@@ -23,7 +25,7 @@ def main() -> None:
     from ultralytics import YOLO
 
     model = YOLO(str(args.weights))
-    box = model.val(data=str(args.data.resolve()), split="test").box
+    box = model.val(data=resolved(args.data), split="test").box
     print(f"mAP50: {box.map50:.3f}")
     failing = 0
     for class_id, recall in zip(box.ap_class_index, box.r):

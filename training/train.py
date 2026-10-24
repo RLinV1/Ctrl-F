@@ -10,6 +10,8 @@ Needs: pip install ultralytics   (use Python 3.11 or 3.12; PyTorch wheels lag be
 import argparse
 from pathlib import Path
 
+from datacfg import resolved
+
 DATA = Path(__file__).resolve().parent / "data.yaml"
 RUNS = Path(__file__).resolve().parent.parent / "runs"
 
@@ -28,7 +30,7 @@ def main() -> None:
     from ultralytics import YOLO  # imported late so --help works without it installed
 
     YOLO(args.model).train(
-        data=str(args.data.resolve()),
+        data=resolved(args.data),
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,
