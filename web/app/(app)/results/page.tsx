@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { SnapshotFrame } from "@/components/ctrlf/snapshot-frame";
 import { requestTime, store } from "@/lib/data";
@@ -45,17 +44,19 @@ async function ResultList() {
       </section>
     );
   }
+  // A plain link: next/link would try to open the zip as a page instead of saving it.
+  const downloadAll = photos.length > 0 && (
+    <a className="border border-rule bg-card-row px-3 py-1.5 font-semibold text-sm hover:bg-panel" data-testid="download-all" download href="/api/photos/zip">
+      Download all photos ({photos.length})
+    </a>
+  );
   return (
     <>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[70ch] text-[17px] text-ink-muted">
           {jobs.length === LIMIT ? `The latest ${LIMIT} questions` : `${jobs.length} questions`}, newest first.
         </p>
-        {photos.length > 0 && (
-          <Link className="border border-rule bg-card-row px-3 py-1.5 font-semibold text-sm hover:bg-panel" data-testid="download-all" href="/api/photos/zip" prefetch={false}>
-            Download all photos ({photos.length})
-          </Link>
-        )}
+        {downloadAll}
       </div>
       <ul className="mt-12 space-y-4">
         {jobs.map((job) => (
