@@ -13,7 +13,7 @@ Plan and rationale: [docs/TRAINING.md](../docs/TRAINING.md). Datasets and weight
 
 ## Small lost items (free dataset) and a Raspberry Pi sized model
 
-The target is small things people lose, never large appliances. `prepare_openimages.py` builds a dataset from Open Images V7 (CC BY images only): phone, glasses, remote, watch, headphones. Open Images has no keys, wallet, wires, AirPods, or AirPods case, so those need other data (the Roboflow Universe AirPods sets, the LeftInCAR dataset on Mendeley, or your own photos from the dev UI Camera tab).
+The target is small things people lose, never large appliances. `prepare_openimages.py` builds a dataset from Open Images V7 (CC BY images only): phone, glasses, remote, watch, headphones. Open Images has no keys, wallet, wires, AirPods, or AirPods case, so those need other data (the Roboflow Universe AirPods sets, the LeftInCAR dataset on Mendeley, or your own photos from `training/collect.py`).
 
 ```bash
 python training/prepare_openimages.py

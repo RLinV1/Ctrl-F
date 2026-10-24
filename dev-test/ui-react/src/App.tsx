@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Camera from "./Camera";
 import Dataset from "./Dataset";
 import Mic from "./Mic";
 import Results from "./Results";
@@ -12,16 +11,11 @@ export default function App() {
     <>
       <h1>Ctrl-F dev test</h1>
       <p>
-        <button onClick={() => setTab("live")} disabled={tab === "live"}>Mic and camera</button>{" "}
+        <button onClick={() => setTab("live")} disabled={tab === "live"}>Speak</button>{" "}
         <button onClick={() => setTab("data")} disabled={tab === "data"}>Labeled dataset</button>{" "}
         <button onClick={() => setTab("model")} disabled={tab === "model"}>Model results</button>
       </p>
-      {tab === "live" && (
-        <>
-          <Mic />
-          <Camera />
-        </>
-      )}
+      {tab === "live" && <Mic />}
       {tab === "data" && <Dataset />}
       {tab === "model" && <Results />}
     </>

@@ -9,27 +9,63 @@ Listens on localhost only. Needs: pip install requests
 import csv
 import json
 import os
-import re
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import yaml
+from find import describe, extract_target, match
+from PIL import Image
 
 from stt_test import transcribe
 from tts_test import DEFAULT_VOICE, load_env, synthesize
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-RAW = ROOT / "datasets" / "ctrlf" / "raw"
 REPORT = HERE / "out" / "report.json"
 PORT = 8000
 
 
 DATASET = ROOT / "datasets" / "personal"
 SPLITS = ("train", "val", "test")
+WEIGHTS = Path(os.environ.get("YOLO_WEIGHTS_PATH") or ROOT / "runs" / "small-items" / "weights" / "best.pt")
+CONFIDENCE = 0.25
+_model = None
+_model_mtime = 0.0
+_model_lock = threading.Lock()
+
+
+def get_model():
+    """Load the trained weights, reloading when training writes a better best.pt."""
+    global _model, _model_mtime
+    if not WEIGHTS.exists():
+        raise FileNotFoundError(f"No trained model at {WEIGHTS} yet. Is training still starting up?")
+    if _model is None or WEIGHTS.stat().st_mtime != _model_mtime:
+        from ultralytics import YOLO  # imported late: slow, and not needed for the other endpoints
+
+        _model_mtime = WEIGHTS.stat().st_mtime
+        _model = YOLO(str(WEIGHTS))
+    return _model
+
+
+def find(jpeg: bytes, transcript: str) -> dict:
+    """Run the model on the photo, then look for the item named in the transcript among its detections."""
+    started = time.perf_counter()
+    with _model_lock:
+        model = get_model()
+        result = model.predict(Image.open(BytesIO(jpeg)).convert("RGB"), conf=CONFIDENCE, device="cpu", verbose=False)[0]
+        known = list(model.names.values())
+    detections = [{"cls": int(c), "name": known[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
+                  for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
+    target, supported = extract_target(transcript, known)
+    matches = match(target, detections) if supported else []
+    status, message = describe(target, supported, matches, known)
+    return {"transcript": transcript, "target": target, "status": status, "message": message, "matches": matches,
+            "detections": detections, "model": WEIGHTS.name, "seconds": round(time.perf_counter() - started, 2)}
 
 
 def dataset_listing() -> dict:
@@ -119,16 +155,12 @@ class Handler(BaseHTTPRequestHandler):
                 text = transcribe(audio, f"clip.{extension}", api_key)
                 print(f"[stt] heard: {text!r}", flush=True)
                 self._json(200, {"text": text, "seconds": round(time.perf_counter() - started, 1)})
-            elif url.path == "/api/collect":
-                item = re.sub(r"[^a-z0-9_-]", "", parse_qs(url.query).get("item", [""])[0].lower())
-                if not item:
-                    return self._json(400, {"error": "item is required"})
-                folder = RAW / item
-                folder.mkdir(parents=True, exist_ok=True)
-                (folder / f"{int(time.time() * 1000)}.jpg").write_bytes(self._body())
-                self._json(200, {"item": item, "count": len(list(folder.glob("*.jpg")))})
+            elif url.path == "/api/find":  # body = JPEG photo, ?text = what the user said
+                self._json(200, find(self._body(), parse_qs(url.query).get("text", [""])[0]))
             else:
                 self._json(404, {"error": "not found"})
+        except FileNotFoundError as error:  # no trained weights yet
+            self._json(503, {"error": str(error)})
         except SystemExit as error:  # transcribe/synthesize exit with the upstream error message
             print(f"[error] {error}", flush=True)
             self._json(502, {"error": str(error)})
