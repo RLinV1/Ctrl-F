@@ -9,7 +9,7 @@ export interface Store {
   createUploadSlot(contentType: string): Promise<{ audioKey: string; uploadUrl: string; expiresAt: string }>;
   storeAudio(key: string, body: ArrayBuffer, contentType: string): Promise<void>;
   audioExists(key: string): Promise<boolean>;
-  /** Transcribes the recording and picks the items asked for. Throws a user-readable Error when it cannot. */
+  /** Transcribes the recording and picks the items asked for. Never throws on a bad transcript: it becomes a no-target job. */
   createJob(audioKey: string): Promise<JobView>;
   /** Oldest pending job for the Pi, now claimed, with the items to look for. */
   claimNextJob(): Promise<{ id: string; targets: string[] } | null>;

@@ -158,12 +158,11 @@ export class S3Store implements Store {
   async createJob(audioKey: string): Promise<JobView> {
     const audio = await this.getBytes(audioKey);
     if (!audio) throw new Error("The recording went missing. Ask again.");
-    let transcript: string;
+    let transcript = "";
     try {
       transcript = await transcribe(audio, audioKey.split("/")[1]);
     } catch (error) {
-      console.error("[stt]", error);
-      throw new Error("The machine could not make out the recording.");
+      console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
     const { targets, unsupported } = await pickTargets(transcript);
     const rec: JobRec = {
