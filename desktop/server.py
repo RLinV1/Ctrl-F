@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Poll s3://BUCKET/incoming/, run YOLO on each new photo, write the annotated image to results/."""
+"""Poll s3://BUCKET/incoming/, run YOLO on each new photo, write results/<id>_result.json (what was found) and then the annotated
+results/<id>_result.jpg. The laptop narrates the json, so the json must land before the jpg."""
+import json
 import os
 import tempfile
 import time
@@ -39,6 +41,30 @@ def has_result(key: str) -> bool:
         raise
 
 
+def requested_items(key: str) -> list[str]:
+    """The items the user asked for, from incoming/<id>.json (written by the Pi from the laptop's job). Empty when absent."""
+    try:
+        body = s3.get_object(Bucket=BUCKET, Key=f"{Path(key).with_suffix('')}.json")["Body"].read()
+        return json.loads(body).get("targets", [])
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+            return []
+        raise
+
+
+def findings(targets: list[str], detections: list[dict], known: list[str]) -> dict:
+    """The facts the narrator words. Matching is by exact class name, so the model's classes must match the target names."""
+    items = []
+    for t in targets:
+        matches = sorted((d for d in detections if d["name"] == t), key=lambda d: -d["conf"])
+        items.append({"item": t, "status": "found" if matches else "not_visible", "matches": matches})
+    if not targets:
+        return {"status": "no_target", "target": None, "matches": [], "known": known, "detections": detections}
+    first = next((i for i in items if i["matches"]), items[0])
+    return {"status": "found" if first["matches"] else "not_visible", "target": first["item"], "matches": first["matches"],
+            "items": items, "detections": detections}
+
+
 def process(key: str) -> None:
     name = Path(key).name
     with tempfile.TemporaryDirectory() as tmp:
@@ -46,7 +72,12 @@ def process(key: str) -> None:
         s3.download_file(BUCKET, key, src)
         result = model(src)[0]
         result.save(filename=out)
-        s3.upload_file(out, BUCKET, f"results/{result_name(key)}")
+        detections = [{"name": result.names[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
+                      for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
+        facts = findings(requested_items(key), detections, list(result.names.values()))
+        stem = f"results/{Path(key).stem}_result"
+        s3.put_object(Bucket=BUCKET, Key=f"{stem}.json", Body=json.dumps(facts).encode())  # before the jpg: the jpg means "done"
+        s3.upload_file(out, BUCKET, f"{stem}.jpg")
     print(name, [result.names[int(c)] for c in result.boxes.cls], flush=True)
 
 
