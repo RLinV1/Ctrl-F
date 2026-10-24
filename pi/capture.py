@@ -27,6 +27,9 @@ def capture() -> str:
             aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
             region_name=os.environ.get("S3_REGION", "us-east-1"),
         ).upload_file(path, bucket, f"incoming/{path}")
+        print(f"uploaded s3://{bucket}/incoming/{path}")
+    else:
+        print("S3_BUCKET not set, skipping upload", file=sys.stderr)
     return path
 
 
