@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readJson } from "./api";
 import { Box, Overlay } from "./Results";
 import StatusLine, { Status } from "./Status";
@@ -25,21 +25,25 @@ export default function Mic() {
   const [result, setResult] = useState<Found | null>(null);
   const [says, setSays] = useState("");
   const recorder = useRef<MediaRecorder | null>(null);
-  type Camera = { stream: MediaStream; video: HTMLVideoElement } | null;
-  const camera = useRef<Promise<Camera> | null>(null);
+  const video = useRef<HTMLVideoElement>(null);
 
-  async function openCamera(): Promise<Camera> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      const video = document.createElement("video");
-      video.muted = true;
-      video.srcObject = stream;
-      await video.play();
-      return { stream, video };
-    } catch {
-      return null; // no camera or permission denied: finish() reports it
-    }
-  }
+  // The camera is on as soon as this page opens (and shown live), so it is warm and ready when you speak.
+  useEffect(() => {
+    let stream: MediaStream | undefined;
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ video: true })
+      .then((s) => {
+        stream = s;
+        if (cancelled) return s.getTracks().forEach((t) => t.stop());
+        if (video.current) video.current.srcObject = s;
+      })
+      .catch(() => {}); // no camera or permission denied: finish() reports it when there is no photo
+    return () => {
+      cancelled = true;
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   // Show the reply and read it aloud with ElevenLabs. If speech fails the text is still on the page.
   async function say(text: string) {
@@ -67,9 +71,6 @@ export default function Mic() {
   async function start() {
     try {
       const audio = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Open the camera in the background so recording starts at once and the webcam (slow to open, dark first
-      // frames) has warmed up by the time we stop talking.
-      camera.current = openCamera();
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : undefined;
       const rec = new MediaRecorder(audio, mimeType ? { mimeType } : undefined);
       const chunks: Blob[] = [];
@@ -89,16 +90,14 @@ export default function Mic() {
     }
   }
 
-  // Grab one frame from the open camera, then release it.
-  async function takePhoto(): Promise<Blob | null> {
-    const cam = await camera.current;
-    camera.current = null;
-    if (!cam) return null;
+  // Grab one frame from the live camera. The camera stays on.
+  function takePhoto(): Promise<Blob | null> {
+    const el = video.current;
+    if (!el || !el.videoWidth) return Promise.resolve(null);
     const canvas = document.createElement("canvas");
-    canvas.width = cam.video.videoWidth;
-    canvas.height = cam.video.videoHeight;
-    canvas.getContext("2d")!.drawImage(cam.video, 0, 0);
-    cam.stream.getTracks().forEach((t) => t.stop());
+    canvas.width = el.videoWidth;
+    canvas.height = el.videoHeight;
+    canvas.getContext("2d")!.drawImage(el, 0, 0);
     return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
   }
 
@@ -138,6 +137,7 @@ export default function Mic() {
   return (
     <section>
       <h2>Speak to the mic</h2>
+      <video ref={video} autoPlay muted playsInline style={{ width: "100%", maxWidth: 640, display: "block", marginBottom: 8 }} />
       <button onClick={toggle}>{recording ? "Stop" : "Start"}</button>
       {clipUrl && (
         <p>
