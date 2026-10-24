@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { RefreshButton } from "@/components/ctrlf/refresh-button";
 import { SnapshotFrame } from "@/components/ctrlf/snapshot-frame";
 import { requestTime, store } from "@/lib/data";
 import type { JobView } from "@/lib/data/types";
@@ -11,9 +12,12 @@ const LIMIT = 50;
 export default function ResultsPage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 pt-10 pb-16 md:px-8 md:pt-[72px]">
-      <h1 className="font-heading font-bold text-[26px] leading-[1.1] tracking-[-0.01em] md:text-[32px]">
-        Every question and its answer
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-heading font-bold text-[26px] leading-[1.1] tracking-[-0.01em] md:text-[32px]">
+          Every question and its answer
+        </h1>
+        <RefreshButton />
+      </div>
       <Suspense fallback={<p className="mt-6 text-ink-muted">Loading results…</p>}>
         <ResultList />
       </Suspense>
