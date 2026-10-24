@@ -14,7 +14,14 @@ The Ask screen SHALL be a single chat-style prompt with a menu inside it for cho
 - **THEN** the menu reads "Speak here", the text field and Send are replaced by a hold-to-talk button, and the prompt says to hold the button and ask
 
 ### Requirement: Visual-novel stage
-The Ask screen SHALL show the narrator on a stage with a dialogue box carrying his name tag. Before a question the box SHALL greet with the last thing seen; while a question is worked on it SHALL say which stage the job is at; once answered, the reply audio SHALL start by itself while the narrator talks in his study; when he finishes, the study SHALL fade to reveal the camera's photo behind him, then he and the dialogue box SHALL fade out, leaving the photo with the item circled. A "next" arrow (▼) SHALL skip ahead, and a "Narrator" control SHALL bring him back. When the browser blocks the voice, he SHALL stay until the user moves on.
+The Ask screen SHALL show the narrator on a stage with a dialogue box carrying his name tag. Before a question the box SHALL greet with the last thing seen, and while a question is worked on it SHALL say which stage the job is at.
+
+#### Scenario: Greeting
+- **WHEN** the page opens
+- **THEN** the narrator's box says the time of day and the last thing the camera saw, and asks where to look
+
+### Requirement: The answer plays out on the stage
+Once answered, the reply SHALL play by itself while the narrator talks in his study. When he finishes, the study SHALL fade to reveal the camera's photo behind him, then he and his box SHALL fade out, leaving the photo with the item circled. A ▼ SHALL skip ahead and a "Narrator" control SHALL bring him back. If the browser blocks the voice, he SHALL stay until the user moves on.
 
 #### Scenario: Answer on the stage
 - **WHEN** a question about the wallet is answered as found
