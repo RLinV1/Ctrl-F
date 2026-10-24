@@ -5,9 +5,14 @@ import shutil
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 import boto3
+from dotenv import load_dotenv
 
+# Absolute path so it also works under cron; real env vars still win.
+load_dotenv(Path.home() / ".ctrlf.env")
+load_dotenv(".env")
 
 def capture() -> str:
     path = f"{uuid.uuid4().hex[:8]}.jpg"
