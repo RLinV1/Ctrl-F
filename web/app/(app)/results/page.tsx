@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { RefreshButton } from "@/components/ctrlf/refresh-button";
+import { ResultItem } from "@/components/ctrlf/result-item";
 import { SnapshotFrame } from "@/components/ctrlf/snapshot-frame";
 import { requestTime, store } from "@/lib/data";
 import type { JobView } from "@/lib/data/types";
@@ -56,7 +57,7 @@ async function ResultList() {
       </div>
       <ul className="mt-12 space-y-4">
         {jobs.map((job) => (
-          <li className="bg-panel p-5" data-job={job.id} key={job.id}>
+          <ResultItem id={job.id} key={job.id}>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)]">
               <div>
                 {job.match ? (
@@ -92,7 +93,7 @@ async function ResultList() {
                 )}
               </div>
             </div>
-          </li>
+          </ResultItem>
         ))}
       </ul>
     </>
