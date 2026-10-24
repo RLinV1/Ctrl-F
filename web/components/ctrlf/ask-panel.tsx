@@ -10,7 +10,7 @@ import type { JobView } from "@/lib/data/types";
 import { clockTime, percent, placeWords, relativeTime } from "@/lib/format";
 import { useDeviceStatus } from "./device-status";
 import { Gear } from "./gear";
-import { useNarrator } from "./narrator";
+import { Narrator } from "./narrator";
 import { SnapshotFrame } from "./snapshot-frame";
 
 export const POLL_MS = 750;
@@ -179,7 +179,7 @@ export function AskPanel() {
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [blocked, setBlocked] = useState(false);
-  const { setSpeaking } = useNarrator();
+  const [speaking, setSpeaking] = useState(false);
   const holdRef = useRef<Promise<boolean> | null>(null);
 
   // Poll the job until it is answered, failed, or stale.
@@ -338,17 +338,16 @@ export function AskPanel() {
         {phase.kind === "answered" && <AnswerPhoto job={phase.job} now={phase.at} />}
       </section>
 
-      <aside aria-label="Answer slip" className={slip ? "md:col-span-3" : "hidden md:col-span-3 md:block"}>
-        <ReceiptPrinter
-          autoPrint={Boolean(slip)}
-          className="h-[26rem] w-full"
-          key={answer?.id ?? "empty"}
-          label={slip ? "Answer slip" : "Answer slip, empty"}
-          emptyNote={slip ? undefined : "Answers print here: what you asked, where it is, and how sure the camera is."}
-          lines={slip?.lines}
-          stamp={slip?.stamp ?? "No answer yet"}
-        />
-      </aside>
+      {/* The right column: the answer slip once there is one, and the narrator standing in
+          the section's bottom-right corner. In the page flow, so he never covers content. */}
+      <div className="flex flex-col gap-4 md:col-span-3">
+        {slip && answer && (
+          <aside aria-label="Answer slip">
+            <ReceiptPrinter autoPrint className="h-[22rem] w-full" key={answer.id} label="Answer slip" lines={slip.lines} stamp={slip.stamp} />
+          </aside>
+        )}
+        <Narrator className="mt-auto ml-auto w-40 md:w-full md:max-w-[220px]" speaking={speaking} />
+      </div>
     </div>
   );
 }

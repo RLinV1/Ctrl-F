@@ -1,31 +1,17 @@
 "use client";
 
 import { animate } from "animejs";
-import { createContext, type ReactNode, useContext, useMemo, useRef, useState } from "react";
+import { useRef } from "react";
 import { useAnime } from "@/lib/motion/use-anime";
 import { cn } from "@/lib/utils";
 
 /*
  * The narrator: the steampunk detective whose voice (ElevenLabs) reads every answer.
- * He sits in the frame's corner on every screen and comes alive while a reply plays.
- * Whether he is speaking is shared through context, so the Ask screen's audio
- * player can tell the shell.
+ * He stands in the bottom-right corner of the Ask section and comes alive while a
+ * reply plays; `speaking` follows the reply's audio.
  */
 
-type NarratorState = { speaking: boolean; setSpeaking: (speaking: boolean) => void };
-
-const NarratorContext = createContext<NarratorState>({ speaking: false, setSpeaking: () => undefined });
-
-export function NarratorProvider({ children }: { children: ReactNode }) {
-  const [speaking, setSpeaking] = useState(false);
-  const value = useMemo(() => ({ speaking, setSpeaking }), [speaking]);
-  return <NarratorContext.Provider value={value}>{children}</NarratorContext.Provider>;
-}
-
-export const useNarrator = () => useContext(NarratorContext);
-
-export function Narrator({ className }: { className?: string }) {
-  const { speaking } = useNarrator();
+export function Narrator({ speaking, className }: { speaking: boolean; className?: string }) {
   const root = useRef<HTMLElement>(null);
   useAnime(
     root,
@@ -59,7 +45,7 @@ export function Narrator({ className }: { className?: string }) {
         {speaking ? (
           <span className="font-semibold text-ink">Speaking…</span>
         ) : (
-          "Your narrator reads every answer aloud."
+          "Ask, and I shall read you the answer."
         )}
       </figcaption>
     </figure>
