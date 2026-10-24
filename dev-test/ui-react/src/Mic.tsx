@@ -103,10 +103,10 @@ export default function Mic() {
 
   async function finish(clip: Blob) {
     const photo = await takePhoto();
+    if (photo) setPhotoUrl(URL.createObjectURL(photo)); // show the snapshot at once, before transcribing
     if (clip.size === 0) return trouble("no audio was captured from the microphone");
     if (!photo) return trouble("no camera is available, so no photo could be taken");
     setClipUrl(URL.createObjectURL(clip));
-    setPhotoUrl(URL.createObjectURL(photo));
     try {
       setStatus({ text: "Transcribing..." });
       const stt = await readJson(await fetch("/api/stt", { method: "POST", body: clip }));
@@ -139,9 +139,10 @@ export default function Mic() {
       <h2>Speak to the mic</h2>
       <div className="speak">
         <div>
-          <video ref={video} autoPlay muted playsInline />
+          {/* The live view gives way to the snapshot after Stop; the video stays mounted so the camera keeps running. */}
+          <video ref={video} autoPlay muted playsInline style={photoUrl ? { display: "none" } : undefined} />
           {photoUrl && (
-            <div style={{ position: "relative", marginTop: 8 }}>
+            <div style={{ position: "relative" }}>
               <img src={photoUrl} alt="Photo taken when you stopped speaking" style={{ width: "100%", display: "block" }} />
               {result && <Overlay boxes={others} color="#777" dashed />}
               {result && <Overlay boxes={result.matches} color="#1b8a3a" />}
