@@ -6,7 +6,7 @@ from voice import VoiceButton
 
 
 def button():
-    return VoiceButton("plughw:CARD=Webcam,DEV=0", "http://web.test:3000", "private-token")
+    return VoiceButton("plughw:CARD=Webcam,DEV=0", Mock())
 
 
 def test_duplicate_edges_cannot_start_overlapping_recordings(monkeypatch):
@@ -53,15 +53,13 @@ def test_failure_releases_lock_and_does_not_submit(monkeypatch):
     b = button()
     b._lock.acquire()
     b.record = Mock(side_effect=FileNotFoundError("arecord"))
-    client = Mock()
-    monkeypatch.setattr("voice.httpx.Client", client)
+    submit = b.submit
     b._run()
     assert not b._lock.locked()
-    client.assert_not_called()
+    submit.assert_not_called()
 
 
-def test_success_submits_supported_audio_and_cleans_up(monkeypatch):
-    from unittest.mock import MagicMock
+def test_success_queues_supported_audio_and_cleans_up(monkeypatch):
     from pathlib import Path
     b = button()
     b._lock.acquire()
@@ -70,13 +68,8 @@ def test_success_submits_supported_audio_and_cleans_up(monkeypatch):
         directories.append(directory)
         return b"OggS"
     b.record = record
-    clients = MagicMock()
-    monkeypatch.setattr("voice.httpx.Client", clients)
     b._run()
-    args = clients.return_value.__enter__.return_value.post.call_args
-    assert args.args[0] == "http://web.test:3000/api/device/jobs"
-    assert args.kwargs["headers"]["content-type"] == "audio/ogg"
-    assert args.kwargs["headers"]["Authorization"] == "Bearer private-token"
+    b.submit.assert_called_once_with(b"OggS")
     assert not Path(directories[0]).exists()
 
 

@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for motivation. The dev branch actually relays jobs through private S3: web performs ElevenLabs STT, writes `jobs/<id>.json`, Pi polls and writes `incoming/<id>.json` then `.jpg`, desktop writes result JSON then an annotated image, and web performs Gemini narration and ElevenLabs TTS. This differs from the aspirational HTTP/SQL job queue in older docs.
+See proposal.md for motivation. Browser-origin requests relay jobs through private S3: web performs ElevenLabs STT, writes `jobs/<id>.json`, Pi polls and writes `incoming/<id>.json` then `.jpg`, desktop writes result JSON then an annotated image, and web performs Gemini narration and ElevenLabs TTS. This differs from the aspirational HTTP/SQL job queue in older docs.
 
 Existing pieces include `/api/device/jobs`, `/api/jobs/latest`, browser discovery gated on camera input mode, stage playback with a blocked-audio fallback, SQLAlchemy photo/detection/item/zone tables, and a Postgres web reader. The Pi button still captures training photos. Historical narration currently consults only recent S3 results and explicitly forbids saying where an item was last seen. The desktop's DB save is optional, and its current poller omits the required capture-time argument when calling process(). No main specs have been archived yet.
 
@@ -59,15 +59,31 @@ Keep current job IDs, S3 keys and JSON-before-image completion order. Deserializ
 
 Use a versioned result contract carrying per-target results, descriptions, capture time, and persistence status. Error result JSON must let web stop polling without requiring a success image. Failed or unpersisted processing stays retryable; completion checks must not skip it forever merely because an output file exists. Fix the desktop poller's capture-time call as part of this boundary.
 
-### 5. Complete Pi audio capture
+### 5. S3-only Pi audio and capture
 
-Proposed default: hold the Grove button to record; release to submit, minimum 0.5 seconds, maximum 15 seconds. Select the Logitech device through `PI_AUDIO_DEVICE`; document `arecord -l` and a manual record/playback check on actual hardware. Record using ALSA and encode a supported Ogg format with ffmpeg before posting to existing `/api/device/jobs`; this avoids changing the API's accepted formats. Document packages separately from Python requirements.
+Hold the Grove button to record Logitech audio; release captures a fresh photo.
+Pi keeps audio/photo metadata in a private persistent local spool until uploads
+succeed. It uploads `incoming/device/<uuid>.ogg`, `.jpeg`, then `.ready.json` last.
+The manifest records version, source, UUID, UTC creation/capture times, and the two
+exact object keys. `.jpeg` intentionally avoids the older worker's `.jpg` scan,
+so new uploads wait safely until the desktop update is deployed. No web URL or
+Pi bearer token is needed on the Pi. Legacy browser S3 jobs/ capture stays supported.
 
-Use a worker/state machine rather than blocking GPIO callbacks. Debounce button edges, bound capture duration, serialize recording, clean up clips, and retain the existing camera lock. After STT creates an S3 job, Pi claims it through the existing poller and takes the fresh photo. Default button action becomes voice search; preserve an explicit training-only CLI mode. Pi speaker output is not used.
+Desktop consumes validated ready manifests, verifies both objects, transcribes
+Ogg audio with ElevenLabs, matches canonical items/aliases from Postgres, then runs
+the existing Hermes/persistence path. It publishes source, transcript, targets and
+creation time with its results so web can reconstruct device jobs after restart.
+A persisted job transcript is reused on a publication retry. Partial uploads are
+ignored; failed STT never creates missing-item counts. Worker needs an ElevenLabs
+STT credential in addition to its existing Hermes/database/S3 settings.
+
+Raw audio remains private in S3 and the local spool is removed only after the ready
+manifest succeeds. Document operator-controlled S3 retention; do not create an
+automatic expiry policy or delete bucket objects without an explicit request.
 
 ### 6. Browser follows device requests and owns playback
 
-Move device discovery from input-mode-specific `ask-inputs.tsx` into the shared Ask lifecycle. Poll while visible regardless of selected mode; use stable job IDs and a monotonic cursor, avoid advancing the cursor to client wall time, and deduplicate in the browser session. Serialize active replies and surface an incoming request without silently replacing an active web search. With one Pi/browser, serialize Pi requests and retain unpresented device IDs until handled; no multi-client dispatch is introduced.
+Device discovery runs in the shared Ask lifecycle. Web scans valid S3 ready manifests and reconstructs jobs/results independently of web memory. A fresh browser cursor begins at the start of stored device history; the existing session cursor avoids repeat presentation during that session. Poll while visible regardless of selected mode; use stable job IDs and a monotonic cursor, avoid advancing the cursor to client wall time, and deduplicate in the browser session. Serialize active replies and surface an incoming request without silently replacing an active web search. With one Pi/browser, serialize Pi requests and retain unpresented device IDs until handled; no multi-client dispatch is introduced.
 
 Retain stage and camera UI, add one-time audio enablement plus explicit replay when needed, and keep text usable without sound. Historical results show location/time and marked historical evidence with a history link. Preserve typed input, reduced motion, keyboard controls and existing private photo access.
 
@@ -120,3 +136,5 @@ new capability specs rather than independently archiving superseded definitions:
 
 Their proposal headers now identify the supersession; unrelated existing behavior
 is preserved. Main specs remain untouched until a reviewed archival/consolidation.
+
+The S3-only Pi transport supersedes the earlier device-audio HTTP submission assumption throughout this change. Existing `/api/device/jobs` can remain for compatibility, but the deployed Pi never calls it.

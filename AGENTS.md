@@ -37,7 +37,7 @@ Directories are created as milestones land (see PRD roadmap). Check the filesyst
 
 - Vercel runs only the web app. No agent image processing or long processing jobs, no inbound calls to the desktop or Pi.
 - The desktop writes results directly to Postgres and object storage. The web app never calls the desktop or the Pi.
-- Web requests use the browser mic; Pi-button requests use its Logitech webcam mic. All replies play through the open browser. The Pi posts audio outbound to web and polls S3 jobs/ for camera work.
+- Web requests use the browser mic; Pi-button requests use its Logitech webcam mic. All replies play through the open browser. The Pi uploads audio/photo/ready manifests to S3 and polls jobs/ for browser camera work; Pi audio is transcribed on desktop.
 - Never commit secrets. Add new env var names to `.env.example` and `docs/TECH_STACK.md`.
 - Snapshots are private. Serve them with signed URLs only.
 - Storage code uses the S3 API only, so the backend (R2, Supabase, SeaweedFS) stays swappable.

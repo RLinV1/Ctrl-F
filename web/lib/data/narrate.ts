@@ -11,6 +11,7 @@ export type ItemResult = { item: string; status: "found" | "not_visible"; matche
 /** results/<id>_result.json, written by desktop/server.py. `unsupported` is added here for a request that names no known item. */
 export type Result = {
   status: "found" | "not_visible" | "no_target" | "unsupported" | "failed";
+  source?: "web" | "device"; transcript?: string; targets?: string[]; created_at?: string;
   version?: number; captured_at?: string; history_status?: HistoryStatus; last_sighting?: HistoryEvidence | null; error?: string;
   target: string | null;
   matches: Detection[];

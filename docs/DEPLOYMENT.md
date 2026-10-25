@@ -5,7 +5,7 @@ here; services, migrations and physical checks belong on the actual hosts.
 
 ## 1. Processing host and Postgres
 
-- Install the same repository revision and `desktop/requirements.txt`.
+- Install the same repository revision and `desktop/requirements.txt`; configure `ELEVENLABS_API_KEY` on desktop for Pi audio STT.
 - Fill root `.env`; back up Postgres; run `alembic upgrade head` from `desktop/`.
 - Seed the tracked item catalog with `python -m ctrlf_db.seed ...`.
 - Run DB tests against a **separate disposable** `TEST_DATABASE_URL`; record the
@@ -26,7 +26,7 @@ here; services, migrations and physical checks belong on the actual hosts.
 ## 3. Pi and browser
 
 - Follow `pi/README.md`; verify the Logitech ALSA device with a record/playback.
-- Configure Pi and web with the same `PI_JOB_TOKEN` and S3 bucket/region.
+- Configure Pi in `~/.ctrlf.env` with S3 bucket/region and microphone settings. No web URL/token is needed on Pi.
 - Start `pi/capture.py` on the Pi and the web app on its host (`web/README.md`).
 - Open one browser on the Ask page and enable audio. All replies play there.
 
@@ -64,3 +64,20 @@ remain in web-server memory, so a web restart can lose in-flight jobs; persisten
 sightings and historical photos survive. There is one Pi and one active Ask page
 in v1. Button requests queue until that page finishes the active reply or the user
 moves to the photo; they do not interrupt its audio.
+
+
+## S3-only Pi upgrade sequence
+
+1. Deploy the updated desktop worker and give it the ElevenLabs STT key. Apply the
+   existing migration 0002 if not already deployed; there is no additional migration.
+2. Deploy the updated web app with S3 manifest discovery, Gemini and ElevenLabs TTS.
+3. Deploy/start Pi with S3 credentials and `PI_AUDIO_DEVICE` in `~/.ctrlf.env`.
+   Its persistent local spool retries failed uploads and publishes ready last.
+4. If Pi runs before the other upgrades, `.jpeg` device assets are ignored by the
+   previous worker; requests remain queued until the consumer is upgraded.
+5. Verify a request recorded before a web restart is discovered and narrated after
+   restart, along with the normal current/last-seen image checks.
+
+Pi hardware inspection over SSH confirmed Brio 101 capture at 16 kHz mono, Ogg
+encoding, a valid webcam JPEG and GPIO 5 access. Complete physical-button voice
+acceptance still requires the matching desktop and web revisions running.

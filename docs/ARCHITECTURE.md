@@ -7,44 +7,31 @@ Postgres, a separately configured vision-capable Hermes Agent and one open brows
 The processing worker calls Hermes; the web never calls the Pi or processing host.
 
 ```
-Browser mic -------------------> web /api/jobs
-Pi button -> Logitech mic -----> web /api/device/jobs (Pi bearer token)
-                                      |
-                                ElevenLabs STT
-                                target normalization
-                                      |
-                                S3 jobs/<id>.json
-                                      |
-                        Pi polls, claims, takes fresh JPEG
-                                      |
-                  S3 incoming/<id>.json, then <id>.jpg
-                                      |
-                         processing worker polls photos
-                                      |
-                         Hermes image analysis (all tracked objects)
-                                      |
-        missing target -> Hermes MCP lookup -> Postgres earlier sighting
-                                      |
-                  worker validates evidence, saves observations to Postgres
-                                      |
-                   S3 results/<id>_result.json, then _result.jpg
-                                      |
-                         web polls, Gemini Victorian narrator
-                                      |
-                            ElevenLabs TTS -> open browser
+Browser mic -> web ElevenLabs STT -> S3 jobs/<id>.json -> Pi photo capture
+Pi button -> local Ogg recording + fresh JPEG -> S3 audio + photo + ready manifest
+                                                    |
+                                desktop polls complete incoming requests
+                                ElevenLabs STT for Pi recordings
+                                Hermes image analysis + Postgres history lookup
+                                validated sightings saved in Postgres
+                                                    |
+                                S3 results/<id>_result.json and _result.jpg
+                                                    |
+                        web discovers device requests/results through S3
+                        Gemini Victorian narration -> ElevenLabs TTS -> browser
 ```
 
-The Pi makes outbound calls only. Web audio comes from the browser; button audio
-comes from the Logitech USB webcam. Both reply through the browser. Gemini words
-the reply; Hermes analyzes images and uses a restricted Postgres history tool.
-The existing web target picker normalizes requests against configured item names;
-plain matches are immediate and its pre-existing Gemini fallback remains for
-phrasing without a direct match. It does not use Hermes for transcription or TTS.
+Pi makes S3 calls only; it needs no web URL/token. Browser recordings retain the
+existing web transcription and S3 jobs/ path. Physical-button recordings are
+transcribed on desktop. Both paths use the same Hermes, memory and browser reply
+experience. Gemini still narrates (with the retained web target-picker fallback);
+Hermes does image analysis and restricted memory lookup, not speech transcription.
+Pi targets are matched against Postgres canonical names/aliases after STT.
 
 ## Component ownership
 
 - `pi/capture.py`: Grove button, voice recorder, serialized camera, S3 queue relay.
-- `pi/voice.py`: hold/release ALSA recording, Ogg encoding, authenticated submission.
+- `pi/voice.py`: hold/release ALSA recording, Ogg encoding and local queue callback.
 - `desktop/server.py`: polling, error/success completion markers and retry delay.
 - `desktop/hermes.py`: authenticated configurable HTTP adapter, schema validation.
 - `desktop/processing.py`: all-object observations, history verification, DB save,
@@ -58,8 +45,8 @@ phrasing without a direct match. It does not use Hermes for transcription or TTS
 Keep using S3 API access so the storage provider remains swappable. Photos remain
 private; rows carry object keys and the web issues signed URLs when displaying
 photos. No model/provider secret is sent to the browser or Pi. Source and annotated
-photos are retained for historical evidence. Raw request audio is transcribed and
-discarded by web; reply audio and in-flight web job state are held in web memory.
+photos are retained for historical evidence. Browser request audio is transcribed and discarded by web; Pi recordings remain
+private in S3 under operator-controlled retention; reply audio and in-flight web job state are held in web memory.
 
 Postgres tables:
 
@@ -93,7 +80,25 @@ Agent conversation/personal memory is not a source of sighting facts.
 
 ## S3 result contract
 
-Queue metadata is `{text, targets}`; Pi adds `captured_at` (UTC ISO timestamp)
+Pi-origin requests use `incoming/device/<uuid>.ogg`, `.jpeg`, and `.ready.json`.
+Pi persists a private local queue and captures before network upload. It publishes
+the manifest last after both assets upload. The manifest has `version: 1`,
+`source: device`, UUID `id`, timezone-aware `created_at`/`captured_at`, exact
+`audio_key`/`image_key`, and `audio_content_type: audio/ogg`. Desktop validates the
+UUID-scoped keys, checks both asset sizes/existence and transcribes with ElevenLabs.
+A committed transcript and targets are reused after retries; incomplete uploads
+and STT failure never increment lost counts. `.jpeg` keeps older workers from
+processing these requests before upgrade. The worker's STT credential stays on
+desktop, never on Pi.
+
+Device result JSON additionally includes `source`, `created_at`, `transcript` and
+`targets`. Web reconstructs device jobs from valid ready manifests even after
+restart or when the recording arrived before web was deployed. Discovery returns
+metadata without waiting for narration; the normal job poll starts Gemini/TTS.
+Browser session cursors avoid repeated playback in that session; a fresh session
+can discover retained device history. Retention is operator controlled.
+
+Queue metadata is `{text, targets}`; For browser-origin captures Pi adds `captured_at` (UTC ISO timestamp)
 before uploading the photo. Existing photos without this use S3 upload time.
 Training-only photos remain under `incoming/training/` and are not processed.
 
@@ -117,7 +122,7 @@ failure never becomes `not_visible` or a successful remembered result.
 | Method | Path | Auth / behavior |
 | --- | --- | --- |
 | POST | `/api/jobs` | UI session if enabled; raw supported audio or JSON `{text}`; returns job |
-| POST | `/api/device/jobs` | Pi bearer token; raw `audio/ogg`, `audio/webm`, or `audio/mp4`; returns job |
+| POST | `/api/device/jobs` | Legacy compatibility only; the deployed Pi does not call it |
 | GET | `/api/jobs/latest?source=device&since=...&afterId=...` | UI; next unpresented job in ascending timestamp/ID order, `{id,createdAt}` or 204 |
 | GET | `/api/jobs/:id` | UI; progress, reply, current/last sighting and explicit history status |
 | GET | `/api/jobs/:id/audio` | UI; in-memory spoken reply |
@@ -142,6 +147,6 @@ claim memory was saved. Camera failures requeue the same ID. Older late photos
 cannot overwrite a newer last-seen location.
 
 This is on-demand capture only: last seen means last photographed. Memory survives
-worker/agent restarts; in-flight voice jobs and reply audio do not survive web
-restart. One Pi/browser is supported; no real-time or multi-camera tracking.
+worker/agent restarts; browser-origin in-flight jobs and reply audio do not survive web restart;
+Pi-origin requests can be reconstructed from their S3 manifests/results. One Pi/browser is supported; no real-time or multi-camera tracking.
 See [DEPLOYMENT.md](DEPLOYMENT.md) for actual-host installation and acceptance.

@@ -13,15 +13,19 @@ Holding the Pi button SHALL record from the configured Logitech USB microphone; 
 - **WHEN** the user holds the Pi button for three seconds while asking for keys and releases it
 - **THEN** one recording from the webcam microphone is submitted as a device request
 
-### Requirement: Submit authenticated device requests
-The Pi SHALL submit audio using its bearer-authenticated device endpoint. Each accepted request SHALL use the same transcription and search pipeline as browser audio and cause a fresh camera capture. The Pi SHALL use outbound connections only.
+### Requirement: Submit complete S3 device requests
+On release, Pi SHALL capture a fresh photo and upload private audio and photo objects under one UUID. It SHALL publish a ready manifest only after both uploads succeed. The Pi SHALL require no web address or web token. Failed uploads SHALL remain locally queued for retry under the same ID.
 
-#### Scenario: Device request accepted
-- **WHEN** a valid Pi recording is accepted
-- **THEN** it is transcribed by ElevenLabs and a fresh photo is captured for the resulting search job
+#### Scenario: Ready after both uploads
+- **WHEN** the audio and image uploads succeed
+- **THEN** the ready manifest is written last and the desktop can process the request
+
+#### Scenario: Interrupted upload
+- **WHEN** either data upload fails
+- **THEN** no ready manifest is published and the Pi retains the request for retry
 
 ### Requirement: Recover from device failures
-Missing microphone, recording failure, or rejected submission SHALL produce a diagnostic without creating a successful search. Repeated button edges SHALL NOT start overlapping recordings, and camera access SHALL remain serialized with web-triggered captures.
+Missing microphone, recording failure, or failed upload SHALL produce a diagnostic without creating a successful search. Repeated button edges SHALL NOT start overlapping recordings, and camera access SHALL remain serialized with web-triggered captures.
 
 #### Scenario: Microphone unavailable
 - **WHEN** the configured microphone cannot be opened

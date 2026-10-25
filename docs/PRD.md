@@ -38,7 +38,7 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 
 | ID | Requirement |
 | --- | --- |
-| F1 | Record browser audio for web requests or Logitech webcam audio for Pi-button requests; transcribe with ElevenLabs through the shared web pipeline. |
+| F1 | Record browser audio for web requests or Logitech webcam audio for Pi-button requests; transcribe with ElevenLabs on web for browser audio and desktop for Pi audio. |
 | F2 | Normalize the transcript to canonical tracked item names and aliases before image analysis, retaining the current target picker. |
 | F3 | Pi captures a photo on command and transmits it to the desktop. |
 | F4 | The processing worker calls Hermes to identify all visible tracked objects, with validated boxes, grounded location descriptions and optional confidence. |

@@ -106,7 +106,7 @@ export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
   useEffect(() => {
     if (!cursor.current) {
       try { cursor.current = JSON.parse(sessionStorage.getItem("ctrlf-device-cursor") || "null"); } catch { /* unavailable */ }
-      cursor.current ||= { since: new Date().toISOString(), afterId: "" };
+      cursor.current ||= { since: new Date(0).toISOString(), afterId: "" };
     }
     if (!listening) return;
     let alive = true;

@@ -3,6 +3,7 @@ import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } fr
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
+import { DEVICE_PREFIX, deviceId, deviceRequest } from "./device-request";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 
 /** Postgres rows, or null when it is not configured or down, so the caller falls back to reading the bucket. */
@@ -94,6 +95,8 @@ export class S3Store implements Store {
   private speaking = new Set<string>();
   private results: { at: number; rows: StoredResult[] } | null = null;
   private known: { at: number; list: string[] } | null = null;
+  private deviceScan: Promise<void> | null = null;
+  private deviceScanAt = 0;
   private parsed = new Map<string, Result>(); // result files never change once written, so each is downloaded once
 
   private services: { transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets };
@@ -226,7 +229,36 @@ export class S3Store implements Store {
     return this.queue(text.trim(), "web");
   }
 
+  private async loadDeviceJob(id: string): Promise<JobRec | null> {
+    const existing = this.jobs.get(id);
+    if (existing) return existing;
+    if (!deviceId(id)) return null;
+    const key = `${DEVICE_PREFIX}${id}.ready.json`;
+    const request = deviceRequest(key, await this.getJson<unknown>(key));
+    if (!request) return null;
+    const rec: JobRec = { id, source: "device", status: "claimed", createdAt: request.created_at,
+      claimedAt: Date.parse(request.captured_at), transcript: "", targets: [], unsupported: null };
+    this.jobs.set(id, rec);
+    return rec;
+  }
+
+  private async discoverDeviceJobs(): Promise<void> {
+    if (this.deviceScan) return this.deviceScan;
+    if (Date.now() - this.deviceScanAt < 1000) return;
+    this.deviceScan = (async () => {
+      const files = (await this.list(DEVICE_PREFIX)).filter(file => file.key.endsWith(".ready.json"));
+      // Serialized reads avoid an unbounded request burst on a large retained history.
+      for (const file of files) {
+        const id = file.key.slice(DEVICE_PREFIX.length, -".ready.json".length);
+        await this.loadDeviceJob(id);
+      }
+      this.deviceScanAt = Date.now();
+    })().finally(() => { this.deviceScan = null; });
+    return this.deviceScan;
+  }
+
   async latestJobId(source: JobSource, since: string, afterId = "") {
+    if (source === "device") await this.discoverDeviceJobs();
     const after = Date.parse(since);
     const newest = [...this.jobs.values()]
       .filter((j) => (j.source ?? "web") === source && (Date.parse(j.createdAt) > after || (Date.parse(j.createdAt) === after && j.id > afterId)))
@@ -274,10 +306,10 @@ export class S3Store implements Store {
     return this.replies.get(id) ?? null;
   }
 
-  async getJob(id: string) {
-    let rec = this.jobs.get(id);
+  async getJob(id: string, refresh = true) {
+    let rec = this.jobs.get(id) ?? await this.loadDeviceJob(id);
     if (!rec) return null;
-    if (rec.status === "pending" || rec.status === "claimed") {
+    if (refresh && (rec.status === "pending" || rec.status === "claimed")) {
       // The jpg lands after the json, so both present means the processing server is done.
       if (await this.hasResult(id)) rec = await this.finish(rec);
       else if (rec.status === "pending" && (await this.list(`incoming/${id}.`, 5)).length) rec = this.update(rec, { status: "claimed", claimedAt: Date.now() });
@@ -327,8 +359,13 @@ export class S3Store implements Store {
   }
 
   private async narrateJob(start: JobRec, correction?: boolean): Promise<JobRec> {
-    const rec = this.jobs.get(start.id) ?? start;
+    let rec = this.jobs.get(start.id) ?? start;
     const raw = rec.result ?? ((await this.getJson<Result>(resultKey(rec.id))) as Result);
+    if (raw.source === "device") rec = this.update(rec, {
+      transcript: raw.transcript ?? rec.transcript,
+      targets: raw.targets ?? rec.targets,
+      source: "device",
+    });
     if (raw.status === "failed") return this.update(rec, { status: "failed", error: raw.error ?? "Image analysis failed." });
     // The processing server was not told which items to look for: say from its detections.
     const detected = raw.status === "no_target" && rec.targets.length ? findings(rec.targets, raw) : raw;
@@ -478,9 +515,10 @@ export class S3Store implements Store {
         id,
         status: result.status === "failed" ? "failed" : "done",
         error: result.error,
-        createdAt: at,
-        transcript: "",
-        targets: [],
+        createdAt: result.created_at ?? at,
+        source: result.source,
+        transcript: result.transcript ?? "",
+        targets: result.targets ?? [],
         unsupported: null,
         target: result.target,
         found: result.status === "found",
