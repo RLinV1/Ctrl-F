@@ -9,7 +9,7 @@
 ## 2. Validate and deploy
 - [x] 2.1 Run desktop isolated-DB and Pi tests, all web tests, full lint/TypeScript, production build, strict specs and secret/config checks; record evidence.
 - [x] 2.2 Check desktop/Pi service, queue, private source/results and DB connectivity; repair authorized config gaps and report unreachable hardware.
-- [ ] 2.3 Publish reviewed fixes, merge/dev sync and deployment verification; produce a concise audit report with remaining limits.
+- [x] 2.3 Publish reviewed fixes, merge/dev sync and deployment verification; produce a concise audit report with remaining limits.
 
 Audit evidence: 173 desktop tests (isolated Postgres, zero skips, application
 counts unchanged); 14 Pi tests; 34 web unit tests; final production browser suite
@@ -25,3 +25,9 @@ of each were already missing. No production evidence/config was modified during
 inspection. User explicitly chose to keep S3 fallback and leave DB env unchanged.
 Pi SSH timed out twice; live button/mic/camera/service acceptance remains
 unverified, not a claimed pass.
+
+Published fixes as PR #42, merged to dev at `9c55433`. Desktop checkout is
+synchronized and service remains active with zero restarts; Python source was
+unchanged. Local web was restarted with the existing root env. Live S3-backed
+items API returned HTTP 200 and signed raw-photo sources. No DB tunnel/config
+change, destructive cleanup or new live paid-provider call was made.
