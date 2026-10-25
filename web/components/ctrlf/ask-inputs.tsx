@@ -106,7 +106,14 @@ export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
   const cursor = useRef<{since: string; afterId: string} | null>(null);
   useEffect(() => {
     if (!cursor.current) {
-      try { cursor.current = JSON.parse(sessionStorage.getItem("ctrlf-device-cursor") || "null"); } catch { /* unavailable */ }
+      try {
+        const saved: unknown = JSON.parse(sessionStorage.getItem("ctrlf-device-cursor") || "null");
+        if (saved && typeof saved === "object" && "since" in saved && "afterId" in saved
+          && typeof saved.since === "string" && Number.isFinite(Date.parse(saved.since))
+          && typeof saved.afterId === "string") {
+          cursor.current = { since: saved.since, afterId: saved.afterId };
+        }
+      } catch { /* Invalid/unavailable storage starts a fresh cursor below. */ }
       // A fresh session starts now: requests made before the page opened are never replayed.
       cursor.current ||= { since: new Date().toISOString(), afterId: "" };
     }

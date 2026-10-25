@@ -164,3 +164,17 @@ test("new bottle category displays current location and offers spoken reply", as
   await expect(page.getByTestId("found-caption")).toContainText("beside the notebook");
   await expect(page.getByAltText("Camera photo with the bottle circled")).toHaveAttribute("src","/fresh.jpg");
 });
+
+
+for (const saved of ["[]",JSON.stringify({since:"not-a-date",afterId:"old"}),JSON.stringify({since:"2026-01-01T00:00:00Z",afterId:42})]) {
+  test(`invalid saved camera cursor recovers: ${saved}`, async ({page}) => {
+    await page.addInitScript(value => sessionStorage.setItem("ctrlf-device-cursor",value),saved);
+    await mock(page,answer(),false);
+    const poll = page.waitForRequest("**/api/jobs/latest?**");
+    await openAsk(page);
+    const url = new URL((await poll).url());
+    expect(Number.isFinite(Date.parse(url.searchParams.get("since")!))).toBe(true);
+    expect(Date.parse(url.searchParams.get("since")!)).toBeGreaterThan(Date.now()-60_000);
+    expect(url.searchParams.get("afterId")).toBe("");
+  });
+}
