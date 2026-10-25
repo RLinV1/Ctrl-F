@@ -4,24 +4,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
 import { DEVICE_PREFIX, deviceId, deviceRequest } from "./device-request";
-import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
-
-/** Postgres rows, or null when it is not configured or down, so the caller falls back to reading the bucket. */
-async function fromPg<T>(query: () => Promise<T>): Promise<T | null> {
-  if (!pgEnabled()) return null;
-  try {
-    return await query();
-  } catch (error) {
-    console.error("[pg] down, reading the bucket instead:", (error as Error).message);
-    return null;
-  }
-}
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } from "./types";
 
 /*
- * One private relay bucket plus Postgres sighting history; web S3 credentials are narrow: it may only write and delete
+ * One private relay bucket; the web app never talks to Postgres. Web S3 credentials are narrow: it may only write and delete
  * jobs/ and read incoming/ and results/ (see docs/ARCHITECTURE.md). So:
  *   jobs/<id>.json                web -> Pi:  {"text", "targets"}. The Pi polls jobs/, claims a job by deleting it.
  *   incoming/<id>.json + .jpg     the Pi's copy of the job and its photo; the processing server polls these
@@ -199,11 +187,6 @@ export class S3Store implements Store {
   private async knownItems(): Promise<string[]> {
     if (this.known && Date.now() - this.known.at < 60_000) return this.known.list;
     try {
-      const tracked = await fromPg(pgItems);
-      if (tracked?.length) {
-        this.known = { at: Date.now(), list: tracked.map(i => i.name) };
-        return this.known.list;
-      }
       const withList = (await this.recentResults()).find((r) => r.result.known?.length);
       this.known = { at: Date.now(), list: withList?.result.known ?? KNOWN_ITEMS };
     } catch {
@@ -382,14 +365,6 @@ export class S3Store implements Store {
     this.results = null;
     let earlier: Stored | undefined;
     if (result.last_sighting) earlier = this.historical(result.last_sighting);
-    else if (result.version !== 2 && result.target) {
-      const prior = await fromPg(() => pgSightings(result.target!, 1, result.captured_at ?? rec.createdAt));
-      if (prior?.[0]) {
-        earlier = prior[0];
-        result = { ...result, history_status: "available", last_sighting: undefined };
-      } else result = { ...result, history_status: prior ? "never_seen" : "unavailable" };
-    }
-
 
     const match =
       result.status === "found" && result.matches[0]
@@ -491,23 +466,7 @@ export class S3Store implements Store {
 
   /** One row per result file in the bucket, newest first. A question this server handled adds its question and reply text. */
   async listJobs(limit: number) {
-    const pg = await fromPg(() => pgResults(limit));
-    if (pg) {
-      const rows = pg.map((r): JobRec => this.jobs.get(r.id) ?? {
-        id: r.id,
-        status: "done",
-        createdAt: r.at,
-        transcript: r.transcript,
-        targets: r.targets,
-        unsupported: null,
-        target: r.targets[0] ?? null,
-        found: r.found,
-        photo: { key: r.snapshotKey, seenAt: r.at, width: r.width, height: r.height },
-        match: r.match,
-      });
-      return Promise.all(rows.map((r) => this.view(r)));
-    }
-    const rows =(await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
+    const rows = (await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
       const mine = this.jobs.get(id);
       if (mine) return mine;
       const first = result.matches?.[0];
@@ -530,8 +489,6 @@ export class S3Store implements Store {
   }
 
   private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {
-    const pg = await fromPg(pgItems);
-    if (pg) return pg.map((i) => ({ item: { id: slug(i.name), name: i.name, lostCount: i.lostCount }, seen: i.seen }));
     const rows = await this.recentResults();
     const lost: Record<string, number> = {};
     for (const { result } of rows) {
@@ -559,8 +516,6 @@ export class S3Store implements Store {
   async itemSightings(id: string, { limit, before }: { limit: number; before?: string }) {
     const row = (await this.items()).find((r) => r.item.id === id);
     if (!row) return null;
-    const pg = await fromPg(() => pgSightings(row.item.name, limit, before));
-    if (pg) return Promise.all(pg.map((s) => this.sighting(s)));
     const cutoff = before ? Date.parse(before) : Infinity;
     const page = this.sightings(await this.recentResults())
       .filter((s) => s.label === row.item.name && Date.parse(s.seenAt) < cutoff)
