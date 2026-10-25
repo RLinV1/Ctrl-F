@@ -18,10 +18,11 @@ here; services, migrations and physical checks belong on the actual hosts.
   secret. Record the exact Hermes version/commit and vision provider/model here
   before rollout; these are not known from the successful API smoke check.
 - Make `/v1/*` reachable over authenticated HTTPS from the processing host.
-- Register the read-only MCP helper as described in `desktop/README.md`, with
-  `MEMORY_DATABASE_URL` pointing to the same database using a SELECT-only role.
-- Verify `lookup_last_sighting` is available; use a known item UUID and cutoff
-  time to verify both a real sighting and a successful empty history.
+- Keep database credentials on the processing host. The worker queries local
+  Postgres and sends at most one bounded evidence record to Hermes over its chat
+  API; no Hermes-host MCP registration or database connection is required.
+- Verify available, empty, unavailable and contradictory history outcomes against
+  an isolated test database.
 
 ## 3. Pi and browser
 
@@ -97,3 +98,81 @@ A user-held Grove button test on the actual Pi successfully produced one complet
 S3 request: 18,326 bytes of Ogg audio and a 288,137-byte JPEG, followed by its ready
 manifest. The local spool cleared after upload. This verifies the physical
 button/microphone/camera/S3 path, not the downstream spoken response.
+
+
+## Preserved processing-server deployment record
+
+The following checkpoints were recovered from the deployed server before its
+local code was reconciled with the S3-only revision. Earlier inactive/MCP notes
+are historical; the last checkpoint describes the then-active supplied-history path.
+
+## CaptNuu processing-host rollout (2026-10-24 America/New_York)
+
+Revision `932635a16da8bc917831cd0e9dce9e4fc6bd6168` is installed in
+`/home/raymond/Ctrl-F`. The separate PostgreSQL 16.15 instance listens on
+`127.0.0.1:55432`, with application DB `ctrlf_hermes` and disposable DB
+`ctrlf_hermes_test`; the older 5432 database was left untouched. A private
+custom-format backup was verified before migration to `0002`; ten tracked names
+were seeded. All 92 desktop tests pass against the isolated test DB. Additional
+seeded legacy upgrade and fresh-process history-read checks passed.
+
+The `ctrlf-worker.service` user unit is installed, stopped and disabled pending
+S3 `PutObject` permission on `ctrlf-snapshots/results/*`. Incoming reads work and
+an unsigned request for an existing photo returned 403; bucket-wide privacy
+controls require storage-administrator verification. One queued photo was
+reported before attempted startup; no application sightings were saved. Hermes
+authentication/image schema passed, but remote MCP historical-evidence acceptance
+and the deployed Hermes version/provider remain pending. No web or Pi service
+was deployed here. Runtime credentials, backups, the proposed minimum worker S3
+policy and the full handoff record are in the private, git-ignored
+`runs/desktop-deployment-932635a/` folder.
+
+## Worker activation follow-up
+
+S3 result JSON/JPEG write and read checks now pass with the configured credentials.
+The user systemd worker is enabled and active; lingering is enabled. The audited
+one-photo backlog completed: version-2 JSON and annotated JPEG published, one
+photo and one job persisted, zero tracked-object observations. Result history
+status is unavailable; remote Hermes MCP memory remains an unresolved dependency.
+The result must not be read as a successful never-seen lookup. Restart duplicate
+verification recorded separately in runs/desktop-deployment-932635a/restart-check.json.
+Hermes version/provider, real historical-evidence acceptance and full web/Pi
+voice-loop/hardware checks remain open. No archive performed.
+
+## Supplied-history pivot
+
+The worker now reads local Postgres before sending bounded historical evidence
+to Hermes through HTTPS chat. Earlier MCP deployment notes above describe the
+superseded implementation; they are not current prerequisites. The active path
+needs no helper registration, database exposure or remote SELECT-only role.
+Keep existing completed production results intact when deploying this change.
+The managed worker must be restarted after the isolated test suite and explicit
+remote supplied-evidence acceptance pass. Record results under the processing
+host deployment record; hardware/full voice-loop and Hermes release/provider
+acceptance remain separate.
+
+## Supplied-history rollout completed
+
+All 109 desktop tests passed with real isolated Postgres (zero skips). Explicit
+remote Hermes checks from fresh processes accepted test-only historical evidence
+and a successful empty lookup without MCP. The desktop worker was restarted and
+is active/running and enabled with zero automatic restarts. The production queue
+was empty; one persisted photo, zero detections, one job and completed output
+hashes remained unchanged across restart. No existing production result was
+reprocessed, so its old history status is retained. New requests use the local
+lookup plus HTTPS supplied-evidence path. No Hermes-host database connection,
+helper registration or tunnel is required. Version/provider recording and full
+web/Pi voice-loop/hardware acceptance remain open.
+
+
+## S3 voice and deployed-fix reconciliation (2026-10-25 UTC)
+
+The server’s bounded supplied-history fixes are integrated with the S3-only Pi
+audio worker. The combined candidate passed 127 desktop tests with zero skips
+using the dedicated disposable Postgres database. Application counts remained
+unchanged: one photo, zero detections, one job, ten tracked items. Two existing
+S3 output references were already missing before this deployment; they were not
+deleted by the reconciliation. Original uncommitted source, private env and
+service configuration are backed up under
+`~/.local/state/ctrlf-reconcile/20261025T041041Z` on the desktop. Preserve the
+existing `.venv/worker`, `.env`, Postgres port and flock-protected user service.

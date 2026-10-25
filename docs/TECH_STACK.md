@@ -70,15 +70,16 @@ See [TECH_STACK_LIVE.md](TECH_STACK_LIVE.md) for the go-live stack (Vercel, GoDa
 ## Hermes runtime configuration
 
 The approved transition replaces YOLO inference with an `httpx>=0.28,<1` adapter,
-Pillow image annotation and the MCP SDK v1 (`mcp>=1.20,<2`) for the read-only
-memory helper. Ultralytics remains only in optional training tools. Configure
+Pillow image annotation and the MCP SDK v1 (`mcp>=1.20,<2`) for the optional legacy
+memory helper. The active worker queries Postgres locally and supplies bounded
+evidence over the existing Hermes chat API; no remote database access is needed. Ultralytics remains only in optional training tools. Configure
 these names in the appropriate host's env file (see `.env.example`):
 
 - `HERMES_BASE_URL`: authenticated agent API base URL including `/v1`; remote HTTPS.
 - `HERMES_API_KEY`: matches Hermes's `API_SERVER_KEY`, processing host only.
 - `HERMES_MODEL`: API agent identifier, default `hermes-agent`; actual provider/model lives inside Hermes.
 - `HERMES_TIMEOUT_SECONDS`: per-call budget, default 30, maximum 120.
-- `MEMORY_DATABASE_URL`: SELECT-only connection on the Hermes MCP helper host.
+- `MEMORY_DATABASE_URL`: optional legacy helper connection; not used by the active worker.
 - `PI_AUDIO_DEVICE`: Logitech ALSA device name, configured on the Pi.
 - `PI_RECORD_MAX_SECONDS`: bounded recording duration, default 15 (0.5–60).
 - `PI_SPOOL_DIR`: optional private local request queue; default `~/.local/state/ctrlf/requests`.

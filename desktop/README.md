@@ -61,45 +61,25 @@ Hermes version/commit and vision provider/model; this repo does not install or
 silently upgrade your existing agent. A real-image smoke check succeeded during
 development, but localization accuracy and deployment version remain operator checks.
 
-## Give Hermes read-only sighting memory
+## Local sighting memory over the chat endpoint
 
-On the **Hermes host**, make this checkout and its Python environment available
-(the same revision as the processing host). Install `desktop/requirements.txt`.
-Create a SELECT-only Postgres role for `items`, `photos`, `detections`, and `zones`
-and put its connection in `MEMORY_DATABASE_URL` in that host's Ctrl-F root `.env`.
-It must reach the same Postgres database as the processing worker.
+Postgres stays on the processing host. After Hermes analyzes a photo, the worker
+queries local Postgres for each absent target's newest sighting strictly before
+that photo's capture time. It sends at most one relevant stored record through
+the existing authenticated `/v1/chat/completions` endpoint. The payload is capped
+at 16 KiB and includes only allowed sighting fields, not database credentials.
+Stored descriptions are data, not agent instructions.
 
-For example, as the DB administrator (replace the database name and password):
+Hermes acknowledges the supplied status and detection ID. The worker validates
+that response and rechecks the newest earlier record before publishing stored
+location/time/photo/box facts. A successful empty query can become `never_seen`;
+DB errors, timeouts, contradictory responses or invented IDs become `unavailable`.
+Gemini still words the reply and ElevenLabs handles speech in the web service.
 
-```sql
-CREATE ROLE ctrlf_memory LOGIN PASSWORD 'replace-with-a-strong-unique-password';
-GRANT CONNECT ON DATABASE ctrlf TO ctrlf_memory;
-GRANT USAGE ON SCHEMA public TO ctrlf_memory;
-GRANT SELECT ON items, photos, detections, zones TO ctrlf_memory;
-```
-
-Use that role in `MEMORY_DATABASE_URL=postgresql://ctrlf_memory:<password>@<db-host>:5432/ctrlf`;
-URL-encode special characters in the password. Keep this URL only in the helper
-host's env file. Apply migrations before granting access to the tables.
-
-Add to Hermes's `~/.hermes/config.yaml`, using real absolute paths on that host:
-
-```yaml
-mcp_servers:
-  ctrlf-memory:
-    command: /absolute/path/Ctrl-F/.venv/bin/python
-    args:
-      - /absolute/path/Ctrl-F/desktop/memory_server.py
-```
-
-Restart Hermes and check that the `lookup_last_sighting` tool is available. This
-stdio subprocess only exposes a parameterized lookup by item UUID and cutoff time;
-it sets each DB transaction read-only. It stores no images and has no write tool.
-The processing worker checks returned evidence IDs against the newest earlier
-Postgres record. A failed/unconfigured memory tool produces “history unavailable,”
-never a fabricated location or “never seen.”
-
-[MCP configuration reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
+The active worker requires no Hermes-host database connection, tunnel, MCP
+registration or `MEMORY_DATABASE_URL`. `memory_server.py` remains an optional
+legacy utility, outside the active search path. Existing helper roles may remain
+unused; do not expose Postgres or share its credentials with Hermes.
 
 ## Start and verify
 
@@ -119,7 +99,7 @@ An explicit API/image check (does not write S3 or DB and may incur provider usag
 ```
 
 Use the actual image dimensions. This check validates the API result, not the
-MCP memory setup. The full deployment check is in [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+supplied-history evidence path. The full deployment check is in [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
 
 Mocked tests:
 
@@ -130,8 +110,7 @@ cd desktop
 ```
 
 No paid API runs in tests. Real Postgres tests skip when the isolated test DB is
-unavailable. MCP SDK major version is constrained below 2 because the server uses
-the v1 FastMCP interface.
+unavailable. MCP SDK v1 remains for the optional legacy helper tests; the active worker requires no helper.
 
 
 ## S3-only Pi audio upgrade
@@ -149,3 +128,14 @@ queued recordings wait safely until this upgrade. STT failures yield an explicit
 processing failure and are retried at the existing delay; they do not count as
 missing objects. Successfully committed transcripts are reused on later retries.
 No new database migration is needed beyond the existing `0002`.
+
+
+## Existing CaptNuu service deployment
+
+The existing server uses `/home/raymond/Ctrl-F/.venv/worker/bin/python`, not the
+root `.venv/bin/python` used in generic examples. Retain that environment, its
+user-managed `ctrlf-worker.service`, the flock lock and private `.env`. Update
+requirements in that existing environment rather than creating a duplicate worker.
+Its dedicated Postgres runs on loopback port 55432; preserve its configured URLs
+and the older database on port 5432. Run destructive fixture tests only against
+the separate configured `ctrlf_hermes_test` database, never the application DB.

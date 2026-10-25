@@ -39,7 +39,15 @@ The desktop sends image bytes (inline) or a short-lived signed URL, capture meta
 
 Normalized contract: observations carry `item`, `bbox: {x,y,w,h}`, and `location_description`; requested-item results distinguish `found`, `not_visible`, and `no_target`. Processing errors are separate. Carry `confidence` only if supplied and validated; make the DB column nullable for models without a meaningful score, and suppress percentages when absent. Do not fabricate YOLO-equivalent confidence.
 
-For absent targets Hermes invokes a narrow read-only `lookup_last_sighting(item_id, before)` tool, backed by parameterized Postgres queries and returning stored IDs, time, zone, description, and box. Register this tool through a small local MCP integration in the Hermes profile. The application checks returned evidence IDs against Postgres before publishing historical facts. Agent tools have no arbitrary SQL/write access. Application code owns all writes and lost-count rules.
+For absent targets the worker queries local Postgres for the newest strictly
+earlier sighting and supplies its allowlisted fields to Hermes over chat. The
+payload is limited to 16 KiB, contains no DB credentials and treats stored text as
+data. Hermes acknowledges only status and detection ID. The worker validates the
+response, rechecks the newest earlier sighting after the network call, and builds
+published facts from Postgres. Contradictory IDs, malformed output, timeouts or
+query failure yield history unavailable. A successful empty query must remain
+separate from an unavailable query. No remote database access, MCP registration
+or tunnel is needed; the previous helper remains optional legacy code.
 
 Gemini receives validated current/historical facts and writes the established short Victorian reply; ElevenLabs transcribes and speaks. Keep current target picking initially, using configured items rather than YOLO classes; do not move speech or narration into Hermes. Remove the narrator prohibition on historical location and give it explicit historical location/time facts. Built-in Hermes personal memory is optional and is never authoritative for sightings.
 
@@ -100,7 +108,7 @@ Retain stage and camera UI, add one-time audio enablement plus explicit replay w
 ## Migration Plan
 
 1. Ship additive DB changes and compatible readers; keep existing history readable.
-2. Configure and verify Hermes locally, including the restricted history tool and image input; record the exact tested version/provider/model.
+2. Configure and verify Hermes locally, including supplied-history acknowledgement and image input; record the exact tested version/provider/model.
 3. Replace the desktop runtime inference and result contract, retain private S3 relay, and test DB persistence/retry before marking jobs complete.
 4. Enable Pi mic and browser discovery/playback, then perform hardware acceptance checks.
 5. Update docs, env names and OpenSpec context; reconcile overlapping changes before archival.
@@ -118,9 +126,9 @@ verification here; real Postgres, Hermes release recording and physical Pi check
 remain acceptance tasks on the actual hosts, and do not block independent code work.
 
 The worker now uses the version-2 S3 result contract documented in ARCHITECTURE.md.
-The MCP helper is a v1 FastMCP stdio subprocess on the Hermes host, with a read-only
-transaction and a SELECT-only database credential. The image adapter and its
-recall request use the same env-configured API. A committed scene is reused after
+The active worker queries local Postgres and supplies bounded historical evidence
+over the same env-configured Hermes API. The old MCP helper is optional legacy
+code and is not a deployment dependency. A committed scene is reused after
 publication failure and failed photos have a one-minute retry delay. The active
 queue transport remains S3; the web target picker retains the existing fallback.
 
@@ -138,3 +146,14 @@ Their proposal headers now identify the supersession; unrelated existing behavio
 is preserved. Main specs remain untouched until a reviewed archival/consolidation.
 
 The S3-only Pi transport supersedes the earlier device-audio HTTP submission assumption throughout this change. Existing `/api/device/jobs` can remain for compatibility, but the deployed Pi never calls it.
+
+
+## Deployed-server reconciliation
+
+The desktop deployment agent changed history transport at commit 932635a without
+committing its working tree. Those source/test changes were backed up and ported
+into the current S3-only branch. Preserve the worker-supplied evidence contract
+above, the dedicated local Postgres instance, existing user service/flock, private
+configuration, completed result objects and S3 transcript/ready-marker behavior.
+Validate the combined code against the server's disposable test DB before
+updating/restarting the single managed worker. No new DB migration is introduced.

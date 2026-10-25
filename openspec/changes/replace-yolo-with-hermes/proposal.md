@@ -7,7 +7,7 @@ Ctrl-F must find belongings from a fresh camera photo and remember their previou
 ## What Changes
 
 - **BREAKING**: Replace the desktop's YOLO inference path with a Nous Research Hermes Agent adapter backed by a configured vision provider. No YOLO weights or training are required for the active search pipeline (F4, F5).
-- Analyze every visible tracked item on every search photo, save validated observations in Postgres, and let Hermes retrieve prior sightings through a narrow application tool (F6, F7, F9).
+- Analyze every visible tracked item on every search photo, save validated observations in Postgres, and supply bounded worker-owned Postgres history to Hermes over chat (F6, F7, F9).
 - **Revised Pi transport**: Pi-button requests upload private Ogg audio, a fresh JPEG, and a ready manifest directly to S3. Desktop runs ElevenLabs STT for these requests; web discovers them from S3 and retains Gemini narration and ElevenLabs TTS. Pi requires no web URL or token.
 - Complete the two audio entry paths: browser microphone for web requests; Logitech USB webcam microphone for Pi-button requests. Both lead to a fresh Pi camera capture (F1, F3).
 - Keep ElevenLabs STT/TTS and Gemini Victorian narration. Give the narrator grounded current or historical location facts, including time, and show the corresponding marked photo (F8, F9).

@@ -1,4 +1,4 @@
-"""Read-only sighting tool. Run on the Hermes host as an MCP stdio subprocess."""
+"""Optional legacy MCP sighting tool; not used by the active processing worker."""
 
 import os
 import uuid

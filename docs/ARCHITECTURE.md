@@ -12,7 +12,7 @@ Pi button -> local Ogg recording + fresh JPEG -> S3 audio + photo + ready manife
                                                     |
                                 desktop polls complete incoming requests
                                 ElevenLabs STT for Pi recordings
-                                Hermes image analysis + Postgres history lookup
+                                Hermes image analysis + worker-supplied Postgres history
                                 validated sightings saved in Postgres
                                                     |
                                 S3 results/<id>_result.json and _result.jpg
@@ -36,7 +36,7 @@ Pi targets are matched against Postgres canonical names/aliases after STT.
 - `desktop/hermes.py`: authenticated configurable HTTP adapter, schema validation.
 - `desktop/processing.py`: all-object observations, history verification, DB save,
   image annotation and versioned results.
-- `desktop/memory_server.py`: read-only MCP lookup subprocess on the Hermes host.
+- `desktop/memory_server.py`: optional legacy MCP helper, unused by the active worker.
 - `desktop/ctrlf_db/`: SQLAlchemy schema, repository and seed; Alembic owns migrations.
 - `web/lib/data/`: S3 relay/readers, optional Postgres UI reader, narration and voice.
 
@@ -72,11 +72,18 @@ unscored ties use deterministic geometry. Named zones use the existing
 bottom-center-in-polygon rule. Item identity is a canonical category in v1, not an
 individual owner's wallet or set of keys.
 
-Hermes's MCP helper uses `MEMORY_DATABASE_URL` with a SELECT-only role and read-only
-transactions. Its sole query takes an item UUID and cutoff time and returns the
-newest strictly earlier observation, or `never_seen`, or `unavailable`. The worker
-checks the agent-returned detection ID against the DB's newest earlier evidence.
-Agent conversation/personal memory is not a source of sighting facts.
+The desktop worker queries Postgres locally by canonical item UUID and current
+photo capture-time cutoff. At most one newest strictly earlier sighting is sent
+through the configured HTTPS chat endpoint, with a 16 KiB limit and an explicit
+field allowlist. Hermes sees no database credentials and needs no direct database
+access or MCP helper. Stored descriptions are treated as untrusted data.
+
+Hermes must acknowledge the supplied status/detection ID. The worker rechecks the
+newest earlier Postgres record after the chat call, then constructs historical
+fields from that stored record. Empty successful lookups yield `never_seen` only
+when acknowledged; DB/query failures, invalid responses, invented IDs and chat
+failures yield `unavailable`. Agent conversation/personal memory is not a source
+of sighting facts. The version-2 result contract below remains unchanged.
 
 ## S3 result contract
 
