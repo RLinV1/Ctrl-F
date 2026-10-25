@@ -53,10 +53,19 @@ historical request or manufacturing a new sighting. Rollback checkpoints remain.
 ## 5. Conversational request parsing
 - [x] 5.1 Strip bounded greetings, hesitation punctuation and standalone determiners in both parsers while preserving object descriptions and explicit lists; verify shared real-transcript/regression fixtures with pytest and Playwright.
 - [x] 5.2 Verify request queueing, aliases and polluted-catalog behavior without paid calls; update architecture and request docs and run TypeScript/lint/OpenSpec checks.
-- [ ] 5.3 Publish and deploy matching web/desktop code, preserve env and checkpoints, and verify the deployed parser and service health.
+- [x] 5.3 Publish and deploy matching web/desktop code, preserve env and checkpoints, and verify the deployed parser and service health.
 
 Conversational parsing checks: 168 desktop tests passed with isolated server
 Postgres (zero skips; application counts unchanged), 116 Playwright tests passed
 across desktop/mobile, including shared transcript fixtures and real store/S3
 queueing for typed/recorded requests. TypeScript, targeted lint, strict OpenSpec
 and diff checks passed. Provider calls are mocked in automated tests.
+
+Conversational parsing deployed from `dev` at `415292b` (PR #35). On the actual
+desktop, the new parser was verified against the live catalog for the recorded
+Yo/AirPods and my/uh/water-bottle phrases and a descriptive multi-item request.
+The existing worker is active/running with zero automatic restarts and unchanged
+env. Local web restarted with root env and returns HTTP 200. Previous server
+HEAD/private config are preserved under
+`~/.local/state/ctrlf-conversational-targets/verification/`; earlier rollback
+checkpoints remain. No schema migration or historical data cleanup was performed.
