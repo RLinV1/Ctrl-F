@@ -34,6 +34,8 @@ export type JobView = {
   /** The text is ready but the spoken reply is still being made: ask again shortly for the audio and word times. */
   replyPending: boolean;
   replyTimings: WordTime[] | null;
+  /** The narrator's spoken quip when the camera took its photo; only while the question is unanswered. */
+  remark?: { text: string; audioUrl: string; timings: WordTime[] } | null;
   /** The photo the camera took for this job, as the processing server marked it. */
   photo: (Snapshot & { seenAt: string }) | null;
   match: Sighting | null;

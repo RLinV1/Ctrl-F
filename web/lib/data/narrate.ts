@@ -140,11 +140,11 @@ async function geminiOnce(body: object, key: string, signal: AbortSignal): Promi
   return parts.map((p) => p.text ?? "").join("").trim();
 }
 
-async function gemini(body: object): Promise<string> {
+async function gemini(body: object, timeoutMs = GEMINI_TIMEOUT_MS): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set");
   const stop = new AbortController();
-  const signal = AbortSignal.any([stop.signal, AbortSignal.timeout(GEMINI_TIMEOUT_MS)]);
+  const signal = AbortSignal.any([stop.signal, AbortSignal.timeout(timeoutMs)]);
   const first = geminiOnce(body, key, signal);
   const second = new Promise<string>((resolve, reject) => setTimeout(() => geminiOnce(body, key, signal).then(resolve, reject), HEDGE_MS));
   try {
@@ -196,6 +196,50 @@ export async function narrate(facts: Record<string, unknown>): Promise<string> {
     console.error("[narrator]", error);
   }
   return plainReply(facts);
+}
+
+const REMARK_PROMPT = `You are Sherlock Holmes, reborn as a witty steampunk inventor-detective, and you are the voice of Ctrl-F, a brass-and-gears device that finds lost belongings.
+
+The device's camera has just taken a photograph for the user's search, and the photograph is now being examined. Make one witty remark about the photograph having been taken, while the user waits.
+
+Rules:
+- One sentence, at most 20 words, that sounds good read aloud.
+- You have not seen the photograph. Never say or hint whether the item is in it, where it is, or what the photograph shows.
+- You may mention the item they asked for by its plain name, if one is given.
+- Wit and Victorian flourish are welcome. No emojis, no stage directions, no quotation marks.`;
+
+const REMARK_MAX_CHARS = 200;
+// The photo takes the desktop several seconds to examine, so a remark can wait longer than the answer's wording;
+// one that is still not voiced when the answer is ready is dropped (s3-store.ts).
+const REMARK_TIMEOUT_MS = 8000;
+
+/**
+ * The narrator's quip when the camera's photo is taken, worded by Gemini. Null when Gemini has no key,
+ * fails or says nothing: the remark is only ever Gemini's, so there is no canned fallback.
+ */
+export async function remark(target: string | null, transcript: string): Promise<string | null> {
+  try {
+    const text = await gemini({
+      systemInstruction: { parts: [{ text: REMARK_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: JSON.stringify({ asked: transcript || null, item: target }) }] }],
+      generationConfig: { temperature: 1.0, maxOutputTokens: 120 },
+    }, REMARK_TIMEOUT_MS);
+    return cleanRemark(text);
+  } catch (error) {
+    console.error("[remark]", error);
+    return null;
+  }
+}
+
+/** One line, no wrapping quotes, cut at a sentence end if Gemini runs long. Null when nothing is left. */
+export function cleanRemark(text: string): string | null {
+  let line = text.replace(/\s+/g, " ").trim().replace(/^["“”']+|["“”']+$/g, "").trim();
+  if (line.length > REMARK_MAX_CHARS) {
+    const cut = line.slice(0, REMARK_MAX_CHARS);
+    const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    line = end > 0 ? cut.slice(0, end + 1) : `${cut.slice(0, cut.lastIndexOf(" "))}…`;
+  }
+  return line || null;
 }
 
 /** Known items named word for word in what was said; "phone" is dropped when "cell phone" is also there. */

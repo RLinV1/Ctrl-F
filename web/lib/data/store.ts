@@ -14,6 +14,8 @@ export interface Store {
   latestJobId(source: JobSource, since: string, afterId?: string): Promise<string | null>;
   /** The spoken reply for a job, if this server still holds it. */
   replyAudio(id: string): Promise<Buffer | null>;
+  /** The voiced remark the narrator made when the job's photo was taken, if this server still holds it. */
+  remarkAudio(id: string): Promise<Buffer | null>;
   /** Also narrates the job once the desktop has written its result. */
   getJob(id: string, refresh?: boolean): Promise<JobView | null>;
   /** The user says the item is (or is not) in the photo after all: re-words the answer. Null when the job is unknown, "conflict" when it has no verdict to correct yet. */

@@ -17,6 +17,7 @@
  *   brass   #a8772a  the one primary action and the lens; never small text
  *   brass-ink #7a5418 brass where it must be text (5.6:1 on sheet)
  *   copper  #9c4a2a  failure only
+ *   walnut  #3b2716  the sidebar: dark leather and wood, with light text (see .leather)
  */
 :root {
   --paper: #f1e8d6;
@@ -29,6 +30,7 @@
   --brass: #a8772a;
   --brass-ink: #7a5418;
   --copper: #9c4a2a;
+  --walnut: #3b2716;
 
   --background: var(--sheet);
   --foreground: var(--ink);
@@ -54,13 +56,13 @@
   --chart-4: var(--ink);
   --chart-5: var(--copper);
   --radius: 0rem;
-  --sidebar: var(--paper);
-  --sidebar-foreground: var(--ink);
+  --sidebar: var(--walnut);
+  --sidebar-foreground: var(--paper);
   --sidebar-primary: var(--brass);
   --sidebar-primary-foreground: var(--ink);
-  --sidebar-accent: #e8dcc6;
-  --sidebar-accent-foreground: var(--ink);
-  --sidebar-border: var(--rule);
+  --sidebar-accent: #563a20;
+  --sidebar-accent-foreground: var(--paper);
+  --sidebar-border: #8a6326;
   --sidebar-ring: var(--brass);
 }
 
@@ -75,6 +77,7 @@
   --color-brass: var(--brass);
   --color-brass-ink: var(--brass-ink);
   --color-copper: var(--copper);
+  --color-walnut: var(--walnut);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -149,7 +152,93 @@
   }
 }
 
+/*
+ * The narrator's dialogue box (stage.tsx), in the frame's materials: a walnut panel with a
+ * brass border, a fine inner brass rule and a dark outline that keeps it distinct over the
+ * bright steam; brass rivets; an engraved brass nameplate; brass buttons.
+ * Text on the panel is paper (#f1e8d6), 12:1 on walnut; the spoken word is light brass.
+ */
+.vn-panel {
+  background: linear-gradient(180deg, rgb(64 43 24 / 0.95), rgb(40 26 14 / 0.95));
+  border: 2px solid #a8772a;
+  outline: 2px solid #2a1b0e;
+  box-shadow:
+    inset 0 0 0 4px rgb(40 26 14 / 0.6),
+    inset 0 0 0 5px rgb(210 168 90 / 0.45),
+    0 6px 18px rgb(0 0 0 / 0.35);
+}
+
+.vn-nameplate {
+  background: linear-gradient(180deg, #e8c983 0%, #c79a4a 48%, #a8772a 52%, #c79a4a 100%);
+  border: 1px solid #6e4b15;
+  outline: 2px solid #2a1b0e;
+  box-shadow:
+    inset 0 1px 0 rgb(255 240 200 / 0.6),
+    0 2px 4px rgb(0 0 0 / 0.35);
+  text-shadow: 0 1px 0 rgb(255 235 190 / 0.5);
+}
+
+.vn-rivet {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #f3dca0, #c79a4a 45%, #6e4b15 100%);
+  box-shadow: 0 0 0 1px rgb(42 27 14 / 0.7);
+}
+
+/* Aged parchment for writing on: the prompt's text area and its menu. Ink on it is 14:1. */
+.vn-parchment {
+  background: linear-gradient(180deg, #fbf5e6, #f3e7cc);
+  box-shadow: inset 0 1px 3px rgb(90 63 23 / 0.25);
+}
+
+/* Brass buttons: the reply's play and the photo's close on the stage, and the prompt's send, talk and minimise. */
+.vn-button,
+.vn-close {
+  background: linear-gradient(180deg, #e2bf74, #c79a4a 50%, #a8772a);
+  border: 1px solid #6e4b15;
+  color: #1f1a14;
+  box-shadow:
+    inset 0 1px 0 rgb(255 240 200 / 0.6),
+    0 2px 4px rgb(0 0 0 / 0.35);
+  transition: filter 150ms ease-out;
+}
+
+.vn-close {
+  border-radius: 9999px;
+  outline: 2px solid #2a1b0e;
+}
+
+.vn-button:hover,
+.vn-close:hover {
+  filter: brightness(1.08);
+}
+
+/* Cream inside dark, so the focus ring shows on walnut and on parchment alike. */
+.vn-button:focus-visible,
+.vn-close:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px #f1e8d6,
+    0 0 0 4px #2a1b0e;
+}
+
 @layer utilities {
+  /*
+   * Walnut leather: the sidebar's ground. The text roles turn light inside it, so the nav,
+   * device status and sign-out stay readable without their own dark variants.
+   * Contrast on walnut: paper 11.6:1, muted 7.4:1, copper 5.8:1.
+   */
+  .leather {
+    --ink: #f1e8d6;
+    --ink-muted: #cdb994;
+    --copper: #e6926a;
+    --brass-ink: #d2a85a;
+    background-color: var(--sidebar);
+    color: var(--ink);
+  }
+
   /* Figures that line up digit for digit. */
   .figures {
     font-variant-numeric: tabular-nums lining-nums;

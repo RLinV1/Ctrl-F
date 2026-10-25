@@ -49,8 +49,9 @@ export function HoldToTalk({
       className={cn(
         "flex h-9 shrink-0 touch-none select-none items-center gap-2 px-3 font-semibold text-sm outline-none transition-colors duration-150",
         "focus-visible:ring-2 focus-visible:ring-brass",
-        recording ? "bg-brass text-ink" : "bg-ink text-paper hover:bg-ink/85",
-        disabled && "cursor-not-allowed opacity-50 hover:bg-ink",
+        // Brass at rest; while recording it turns walnut with a lit brass ring, so the change is plain.
+        recording ? "bg-walnut text-paper ring-2 ring-[#e2bf74]" : "vn-button",
+        disabled && "cursor-not-allowed opacity-50",
       )}
       data-live={live || undefined}
       data-testid="talk"

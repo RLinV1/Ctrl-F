@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, findings, humanTime, KNOWN_ITEMS, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
+import { factsFor, findings, humanTime, KNOWN_ITEMS, narrate, pickTargets, type Detection, type HistoryEvidence, remark, speak, transcribe, type Result, where } from "./narrate";
 import { DEVICE_PREFIX, deviceId, deviceRequest } from "./device-request";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 
@@ -34,6 +34,7 @@ import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } 
 
 const SIGN_SECONDS = 3600;
 const REPLY_CACHE = 20; // spoken replies kept in memory
+const REMARK_FRESH_MS = 20_000; // only a photo this new gets a remark, so jobs loaded from history stay quiet
 const JOB_CACHE = 200; // job records kept in memory
 const RESULTS_READ = 60; // newest results read to build items and history
 const RESULTS_TTL_MS = 3000;
@@ -93,18 +94,21 @@ export class S3Store implements Store {
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
   private speaking = new Set<string>();
+  /** The narrator's quip when a job's photo is taken, voiced; held in memory like replies. */
+  private remarks = new Map<string, { text: string; audio: Buffer; timings: WordTime[] }>();
+  private remarking = new Set<string>();
   private results: { at: number; rows: StoredResult[] } | null = null;
   private known: { at: number; list: string[] } | null = null;
   private deviceScan: Promise<void> | null = null;
   private deviceScanAt = 0;
   private parsed = new Map<string, Result>(); // result files never change once written, so each is downloaded once
 
-  private services: { transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets };
+  private services: { transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets; remark: typeof remark };
   private signOverride?: (key: string) => Promise<string>;
 
   constructor(dependencies: { client?: S3Client; sign?: (key: string) => Promise<string>;
-    services?: Partial<{transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets}> } = {}) {
-    this.services = { transcribe, narrate, speak, pickTargets, ...dependencies.services };
+    services?: Partial<{transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets; remark: typeof remark}> } = {}) {
+    this.services = { transcribe, narrate, speak, pickTargets, remark, ...dependencies.services };
     this.signOverride = dependencies.sign;
     const config = (endpoint?: string) => ({
       endpoint: endpoint || undefined,
@@ -300,6 +304,10 @@ export class S3Store implements Store {
     return this.replies.get(id) ?? null;
   }
 
+  async remarkAudio(id: string) {
+    return this.remarks.get(id)?.audio ?? null;
+  }
+
   async getJob(id: string, refresh = true) {
     let rec = this.jobs.get(id) ?? await this.loadDeviceJob(id);
     if (!rec) return null;
@@ -313,7 +321,29 @@ export class S3Store implements Store {
     }
     if (rec.status === "claimed" || rec.status === "done") this.cameraDown = false;
     if (rec.status === "done" && rec.result) this.desktopDown = false;
+    if (refresh && rec.status === "claimed") this.startRemark(rec);
     return this.view(rec);
+  }
+
+  /**
+   * The photo has just been taken: have the narrator remark on it while the photo is examined. Once per job,
+   * only for a fresh photo, and only if it is spoken before the answer is ready (the answer always wins).
+   */
+  private startRemark(rec: JobRec) {
+    if (this.remarks.has(rec.id) || this.remarking.has(rec.id)) return;
+    if (Date.now() - (rec.claimedAt ?? 0) > REMARK_FRESH_MS) return;
+    this.remarking.add(rec.id);
+    const answered = () => this.jobs.get(rec.id)?.status !== "claimed";
+    (async () => {
+      const text = await this.services.remark(rec.target ?? rec.targets[0] ?? null, rec.transcript);
+      if (!text || answered()) return;
+      const spoken = await this.services.speak(text);
+      if (answered()) return; // too late: the answer is ready, so the remark is dropped
+      this.remarks.set(rec.id, { text, audio: spoken.audio, timings: spoken.timings });
+      for (const old of [...this.remarks.keys()].slice(0, -REPLY_CACHE)) this.remarks.delete(old);
+    })()
+      .catch((error) => console.error("[remark]", error)) // no remark; the answer is unaffected
+      .finally(() => this.remarking.delete(rec.id));
   }
 
   private update(rec: JobRec, change: Partial<JobRec>): JobRec {
@@ -475,6 +505,10 @@ export class S3Store implements Store {
       replyAudioUrl: this.replies.has(rec.id) ? `/api/jobs/${rec.id}/audio` : null,
       replyPending: this.speaking.has(rec.id),
       replyTimings: rec.replyTimings ?? null,
+      // Only while the question is unanswered: the answer replaces the remark.
+      remark: rec.status === "claimed" && this.remarks.has(rec.id)
+        ? { text: this.remarks.get(rec.id)!.text, audioUrl: `/api/jobs/${rec.id}/remark`, timings: this.remarks.get(rec.id)!.timings }
+        : null,
       photo: rec.photo ? { id: rec.photo.key, url: await this.sign(rec.photo.key), width: rec.photo.width, height: rec.photo.height, seenAt: rec.photo.seenAt } : null,
       match: rec.match ? await this.sighting(rec.match) : null,
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,
