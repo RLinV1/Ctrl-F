@@ -27,7 +27,7 @@ The website is the voice interface: the browser records the user's microphone an
 - **Vercel never calls the Pi or desktop.** The Pi and desktop make outbound calls only. The job table in Postgres is the hand-off between the web and the Pi.
 - **One job = one voice request.** Status moves `pending -> claimed -> done | failed`.
 - **Storage uses the S3 API only**, so R2 can be swapped for SeaweedFS.
-- **Memory is plain SQL.** Last seen = newest `sightings` row. Lost count = `items.lost_count`. No vector DB.
+- **Memory is plain SQL.** Last seen = `items.last_seen_at` / `last_zone_id` / `last_photo_id` (a cached copy of the newest detection). Lost count = `items.lost_count`. No vector DB.
 - **Periodic scans** (optional, M5) are a desktop scheduler calling the same detect-and-store function.
 - **Network:** Pi and desktop share a LAN. If not, use Tailscale. Do not open inbound ports.
 
@@ -39,56 +39,78 @@ The website is the voice interface: the browser records the user's microphone an
 4. Pi captures a JPEG and sends it with the job id to the desktop: `POST {DESKTOP_BASE_URL}/process`.
 5. Desktop downloads the audio, calls ElevenLabs STT, and reduces the transcript to a target item name by matching it against the trained class list. No LLM.
 6. Desktop runs the custom-trained YOLO model on the JPEG and matches the target to detections.
-7. Desktop stores the JPEG and inserts `snapshots` and `sightings` rows. If the target was not found, it looks up the last sighting and increments `items.lost_count`.
+7. Desktop stores the JPEG and inserts a `photos` row plus one `detections` row per box, and updates each found item's last location. If the target was not found, it increments `items.lost_count`.
 8. Gemini, as a witty steampunk narrator, writes a one or two sentence reply. ElevenLabs TTS turns it into audio stored in R2.
 9. Desktop updates the job: `status = done`, `reply_text`, `reply_audio_key`.
 10. Browser polls `GET /api/jobs/:id`, shows the reply, and plays the audio from a signed URL.
 
 ## Data model (Postgres)
 
+Owned by `desktop/`: SQLAlchemy models in `desktop/ctrlf_db/models.py`, Alembic migrations in `desktop/migrations/`. Every table has a UUID primary key (`gen_random_uuid()`). Media stays in S3, and rows store the object key, never a URL (photos are private, so readers sign the key when they show it).
+
 ```
-items
-  id            uuid pk
-  name          text unique        -- canonical, lowercase ("keys"), matches a trained class
-  aliases       text[]
-  lost_count    int default 0
-  created_at    timestamptz
+items                      -- a tracked thing
+  id             uuid pk
+  name           text unique       -- lowercase, matches a model class ("keys")
+  aliases        text[]
+  lost_count     int default 0
+  last_zone_id   uuid fk zones null    -- last location
+  last_seen_at   timestamptz null
+  last_photo_id  uuid fk photos null
+  created_at     timestamptz
 
-snapshots
-  id            uuid pk
-  storage_key   text
-  captured_at   timestamptz
-  width, height int
+photos                     -- one camera photo
+  id             uuid pk
+  s3_key         text unique       -- incoming/<job>.jpg
+  annotated_key  text null         -- results/<job>_result.jpg (boxes drawn)
+  taken_at       timestamptz       -- S3 upload time until the Pi sends its capture time
+  width, height  int
+  model_version  text null
+  job_id         uuid fk jobs null
+  created_at     timestamptz
 
-sightings
-  id            uuid pk
-  item_id       uuid fk items
-  snapshot_id   uuid fk snapshots
-  label         text
-  confidence    real
-  bbox          jsonb              -- {x, y, w, h} normalized 0..1
-  seen_at       timestamptz
+detections                 -- join table: which items each photo shows
+  id             uuid pk
+  photo_id       uuid fk photos (cascade)
+  item_id        uuid fk items null    -- null for classes we don't track
+  label          text
+  confidence     real
+  bbox           jsonb             -- {x, y, w, h} normalized 0..1
+  zone_id        uuid fk zones null
+  seen_at        timestamptz       -- copy of photos.taken_at
+  index (item_id, seen_at desc)
 
-queries
-  id            uuid pk
-  transcript    text
-  target        text
-  item_id       uuid fk items null
-  found         boolean
-  reply_text    text
-  asked_at      timestamptz
+zones                      -- named areas of the fixed camera view
+  id             uuid pk
+  name           text unique       -- "desk", "couch"
+  polygon        jsonb             -- [[x, y], ...] normalized 0..1
+  created_at     timestamptz
 
-jobs
-  id               uuid pk
+jobs                       -- one voice request (replaces the earlier queries draft)
+  id               uuid pk         -- the id in jobs/<id>.json and incoming/<id>.jpg
   status           text            -- pending | claimed | done | failed
-  audio_key        text            -- user's recording in R2
-  query_id         uuid fk queries null
+  audio_key        text null
+  transcript       text null
+  targets          text[]
+  found            boolean null
+  corrected        boolean default false
+  reply_text       text null
   reply_audio_key  text null
+  reply_timings    jsonb null      -- [{word, start, end}]
   error            text null
   created_at, claimed_at, finished_at  timestamptz
+  index (status, created_at)
+
+device_heartbeats
+  device         text pk           -- pi | desktop
+  last_seen_at   timestamptz
 ```
 
-Derived values (do not store): last seen of an item, and lost frequency (count of `queries` with `found = false`).
+Rules:
+- A detection's zone is the first zone (by `created_at`, then `name`) containing the bottom-centre of its box.
+- An item's `last_*` columns change only when a photo is newer than `last_seen_at`, so photos processed out of order can't move an item back in time. When one photo shows an item twice, the most confident box wins.
+- Each requested target that's tracked but not detected adds 1 to its `lost_count`. Reprocessing a stored `s3_key` changes nothing.
+- Derived (not stored): lost frequency over time (count of `jobs` with `found = false` per target).
 
 ## Interfaces
 
@@ -143,7 +165,7 @@ These are proposals. Change them while building, and update this file in the sam
 
 ## Dev pipeline (branch `dev`, S3 only, everything polls)
 
-Postgres is skipped. One bucket holds jobs, photos and results; the web server does STT, narration and TTS. Nothing calls the web app but the browser. The web app's S3 credentials are narrow: list and read `incoming/` and `results/`, write and delete `jobs/`. No audio is stored.
+The web app skips Postgres (the desktop can write to it, see step 3). One bucket holds jobs, photos and results; the web server does STT, narration and TTS. Nothing calls the web app but the browser. The web app's S3 credentials are narrow: list and read `incoming/` and `results/`, write and delete `jobs/`. No audio is stored.
 
 1. Browser records and `POST /api/jobs` sends the recording as the request body. The web server runs ElevenLabs STT and Gemini item picking, drops the audio, and writes `jobs/<id>.json` (`{"text", "targets"}`).
 2. The Pi (`dev-test/pi_capture.py` on main) polls `jobs/`, deletes the job to claim it, photographs, and uploads `incoming/<id>.json` (a copy of the job) then `incoming/<id>.jpg`.

@@ -22,7 +22,7 @@ Status column: **Decided** = user stated it. **Default** = our recommendation, c
 | Web testing | Playwright (`@playwright/test`) | Decided | All website tests. External APIs are mocked. |
 | Python testing | pytest | Default | For `desktop/` and `pi/`. |
 | UI auth | Single-user password | Default | Optional while local; required before any deployment. |
-| ORM / queries | Drizzle (web), SQLAlchemy or psycopg (desktop) | Default | |
+| ORM / queries | Plain SQL with `postgres` (web, see the web-ui change), SQLAlchemy 2 + psycopg 3 with Alembic migrations (desktop) | Default | The desktop owns the schema: `desktop/ctrlf_db/models.py` and `desktop/migrations/`. |
 | Package managers | pnpm (web), uv or pip + venv (Python) | Default | |
 | Orchestration | `docker-compose.yml` for Postgres and SeaweedFS | Default | One command brings up the data services. |
 
@@ -37,7 +37,7 @@ GEMINI_API_KEY
 GEMINI_MODEL                # optional, default gemini-flash-lite-latest
 ELEVENLABS_API_KEY
 ELEVENLABS_VOICE_ID
-DATABASE_URL              # e.g. postgresql://ctrlf:ctrlf@localhost:5432/ctrlf
+DATABASE_URL              # e.g. postgresql://ctrlf:ctrlf@127.0.0.1:5432/ctrlf
 S3_ENDPOINT               # e.g. http://localhost:8333
 S3_BUCKET
 S3_ACCESS_KEY_ID
