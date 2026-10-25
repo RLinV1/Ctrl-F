@@ -29,7 +29,7 @@ hashes remained unchanged. Local feature web restarted with root env and HTTP
 ## 3. Integrate latest dev
 - [x] 3.1 Inspect dev frontend/remark/vapor changes and resolve JobView conflict while retaining raw photos and latency changes.
 - [x] 3.2 Run merged desktop/web checks, including new remark/layout coverage, and strict OpenSpec validation.
-- [ ] 3.3 Publish feature merge, merge PR #37 into dev, synchronize desktop/local web and verify clean matching revisions.
+- [x] 3.3 Publish feature merge, merge PR #37 into dev, synchronize desktop/local web and verify clean matching revisions.
 
 Dev integration checks: latest dev through `4f30c4b` contains UI/vapor
 improvements and photo-taken remarks. The JobView conflict retains both remark
@@ -38,3 +38,9 @@ intentional platform skips; web unit tests: 32 passed. TypeScript, targeted
 ESLint, both change specs and diff checks passed. Desktop source is unchanged
 from the validated 173-test revision. Browser checks wait for the prompt-ready
 signal before clicking controls to avoid pre-hydration interaction races.
+
+PR #37 merged into dev at `c65891b` after explicit user approval. Desktop and
+local web now use dev; the Python subtree matches the already-tested/deployed
+revision, so the running desktop process was preserved (active, zero automatic
+restarts). Local merged web restarted with root env and returns HTTP 200.
+The earlier feature-only rollout notes above are historical checkpoints.

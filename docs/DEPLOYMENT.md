@@ -262,3 +262,19 @@ were preserved. Local web preview runs with root env at port 3000 (HTTP 200).
 Dev is deliberately not merged. To roll back this preview, stop the worker,
 switch the desktop checkout to its preserved prior dev branch/revision, and
 restart the same service; no schema/env migration was introduced.
+
+
+## Feature integration into dev
+
+At the user's request, PR #37 merged into dev at `c65891b`, combining raw-photo
+target overlays and worker latency improvements with dev's frontend refinements,
+vapor transitions and photo-taken remarks (PR #40). The JobView conflict was
+resolved by retaining both the remark field and raw-photo semantics.
+
+Combined verification: 136 Playwright tests passed, two expected platform skips,
+32 web unit tests passed, TypeScript/lint/strict OpenSpec passed. Desktop source
+was unchanged from the 173-test isolated-Postgres revision. Both actual desktop
+and local web checkouts use dev. Worker active, zero automatic restarts and same
+PID; no Python restart was needed because the subtree was identical. Local web
+restarted with root env and returned HTTP 200. Earlier feature-only notes are
+historical; the original rollback tag/private backups remain available.
