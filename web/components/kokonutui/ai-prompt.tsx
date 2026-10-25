@@ -73,7 +73,7 @@ function SendButton({ canSend, busy, onSend }: { canSend: boolean; busy: boolean
       aria-busy={busy || undefined}
       aria-label="Send question"
       className={cn(
-        "relative flex size-9 shrink-0 items-center justify-center",
+        "relative flex size-8 shrink-0 items-center justify-center",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass",
         "transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
         // Fills in once there is something to send, so it says "ready" before it is pressed.
@@ -166,7 +166,7 @@ export default function AI_Prompt({
   );
   // The last question sent, for ↑ in an empty prompt (as in a terminal).
   const lastSentRef = useRef("");
-  const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
+  const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 40, maxHeight: 120 });
   const textareaId = useId();
   const selected = modes.find((m) => m.id === mode) ?? modes[0];
   const typing = selected.id === textMode;
@@ -209,7 +209,7 @@ export default function AI_Prompt({
                 What are you looking for?
               </label>
               <Textarea
-                className="min-h-[56px] w-full resize-none rounded-none border-none bg-transparent px-4 pt-3.5 pb-1 text-[17px] text-ink leading-relaxed placeholder:text-ink-muted/70 focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="min-h-[40px] w-full resize-none rounded-none border-none bg-transparent px-3 pt-2.5 pb-0.5 text-[15px] text-ink leading-relaxed placeholder:text-ink-muted/70 focus-visible:ring-0 focus-visible:ring-offset-0"
                 id={textareaId}
                 maxLength={300}
                 onChange={(e) => {
@@ -223,10 +223,10 @@ export default function AI_Prompt({
               />
             </>
           ) : (
-            <div className="flex min-h-[64px] items-center px-4 pt-3.5 pb-1 text-[17px]">{body}</div>
+            <div className="flex min-h-[44px] items-center px-3 pt-2.5 pb-0.5 text-[15px]">{body}</div>
           )}
 
-          <div className="flex items-center gap-1 px-2.5 pt-1 pb-2.5">
+          <div className="flex items-center gap-1 px-2 pt-0.5 pb-1.5">
             <ModeMenu modes={modes} onSelect={(m) => onModeChange(m.id)} selected={selected} />
             <div className="flex-1" />
             {typing ? <SendButton busy={busy} canSend={canSend} onSend={submit} /> : action}

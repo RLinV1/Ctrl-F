@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Keyboard, Mic } from "lucide-react";
+import { Camera, ChevronDown, ChevronUp, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
@@ -194,6 +194,8 @@ function AskSession() {
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [mode, setMode] = useState<AskMode>("type");
+  // The prompt floats over the stage; minimising it clears the narrator's dialogue.
+  const [minimized, setMinimized] = useState(false);
   const holdRef = useRef<Promise<boolean> | null>(null);
   const recording = phase.kind === "recording";
   const elapsed = useElapsed(recording);
@@ -366,7 +368,18 @@ function AskSession() {
           working={working}
         />
       </div>
-      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] pb-4">
+      <div className="sticky bottom-0 mx-auto flex w-full max-w-[560px] flex-col items-end pb-3">
+      <button
+        aria-expanded={!minimized}
+        className="mb-1 flex items-center gap-1.5 bg-ink/85 px-3 py-1 text-paper text-sm hover:bg-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass"
+        data-testid="prompt-toggle"
+        onClick={() => setMinimized((m) => !m)}
+        type="button"
+      >
+        {minimized ? <ChevronUp aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
+        {minimized ? "Ask a question" : "Minimise"}
+      </button>
+      <div className={minimized ? "hidden" : "w-full"}>
       <AI_Prompt
         action={action}
         body={body}
@@ -377,6 +390,7 @@ function AskSession() {
         onSubmit={askText}
         textMode="type"
       />
+      </div>
 
       {mode === "speak" && mic === "denied" && (
         <p className="text-copper text-sm" role="alert">
