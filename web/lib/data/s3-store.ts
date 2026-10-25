@@ -4,6 +4,17 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
+
+/** Postgres rows, or null when it is not configured or down, so the caller falls back to reading the bucket. */
+async function fromPg<T>(query: () => Promise<T>): Promise<T | null> {
+  if (!pgEnabled()) return null;
+  try {
+    return await query();
+  } catch (error) {
+    console.error("[pg] down, reading the bucket instead:", (error as Error).message);
+    return null;
+  }
+}
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } from "./types";
@@ -419,8 +430,9 @@ export class S3Store implements Store {
 
   /** One row per result file in the bucket, newest first. A question this server handled adds its question and reply text. */
   async listJobs(limit: number) {
-    if (pgEnabled()) {
-      const rows = (await pgResults(limit)).map((r): JobRec => this.jobs.get(r.id) ?? {
+    const pg = await fromPg(() => pgResults(limit));
+    if (pg) {
+      const rows = pg.map((r): JobRec => this.jobs.get(r.id) ?? {
         id: r.id,
         status: "done",
         createdAt: r.at,
@@ -455,7 +467,8 @@ export class S3Store implements Store {
   }
 
   private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {
-    if (pgEnabled()) return (await pgItems()).map((i) => ({ item: { id: slug(i.name), name: i.name, lostCount: i.lostCount }, seen: i.seen }));
+    const pg = await fromPg(pgItems);
+    if (pg) return pg.map((i) => ({ item: { id: slug(i.name), name: i.name, lostCount: i.lostCount }, seen: i.seen }));
     const rows = await this.recentResults();
     const lost: Record<string, number> = {};
     for (const { result } of rows) {
@@ -483,7 +496,8 @@ export class S3Store implements Store {
   async itemSightings(id: string, { limit, before }: { limit: number; before?: string }) {
     const row = (await this.items()).find((r) => r.item.id === id);
     if (!row) return null;
-    if (pgEnabled()) return Promise.all((await pgSightings(row.item.name, limit, before)).map((s) => this.sighting(s)));
+    const pg = await fromPg(() => pgSightings(row.item.name, limit, before));
+    if (pg) return Promise.all(pg.map((s) => this.sighting(s)));
     const cutoff = before ? Date.parse(before) : Infinity;
     const page = this.sightings(await this.recentResults())
       .filter((s) => s.label === row.item.name && Date.parse(s.seenAt) < cutoff)

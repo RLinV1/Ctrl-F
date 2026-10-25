@@ -48,7 +48,7 @@ const g = globalThis as { __ctrlfPool?: Pool };
 export const pgEnabled = () => Boolean(process.env.DATABASE_URL);
 
 function pool(): Pool {
-  return (g.__ctrlfPool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 4 }));
+  return (g.__ctrlfPool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: 4, connectionTimeoutMillis: 2000 }));
 }
 
 /** Boxes are stored as fractions of the photo; the screens draw them in photo pixels. */
