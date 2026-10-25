@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Playfair, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   title: "Ctrl-F",
   description: "Ask where something is. The camera remembers where it last saw it.",
 };
+
+// The on-screen keyboard shrinks the page instead of covering it.
+export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

@@ -359,7 +359,6 @@ function AskSession() {
       <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
         <Stage
           answer={answer}
-          answeredAt={phase.kind === "answered" ? phase.at : 0}
           aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
           key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
           line={line}
