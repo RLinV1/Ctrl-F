@@ -18,11 +18,11 @@ LEFT_HALF = [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]
 RIGHT_HALF = [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]
 
 
-def on_left(label: str, conf: float = 0.9) -> Box:
+def on_left(label: str, conf: float | None = 0.9) -> Box:
     return Box(label, conf, {"x": 0.1, "y": 0.5, "w": 0.2, "h": 0.2})
 
 
-def on_right(label: str, conf: float = 0.9) -> Box:
+def on_right(label: str, conf: float | None = 0.9) -> Box:
     return Box(label, conf, {"x": 0.6, "y": 0.5, "w": 0.2, "h": 0.2})
 
 
@@ -182,3 +182,46 @@ def test_yolo_box_and_job_key_helpers() -> None:
     job = uuid.uuid4()
     assert job_id_from_key(f"incoming/{job}.jpg") == job
     assert job_id_from_key("incoming/webcam-photo.jpg") is None
+
+
+def test_unscored_incidental_observations_and_location(session: Session) -> None:
+    setup_world(session)
+    save(session, "incoming/a.jpg", NINE, [
+        Box("keys", None, on_left("keys").bbox, "On the couch"),
+        Box("wallet", None, on_right("wallet").bbox, "On the desk beside the mug"),
+    ], targets=["keys"])
+    assert item(session, "wallet").last_seen_at == NINE
+    wallet = session.scalars(select(Detection).where(Detection.label == "wallet")).one()
+    assert wallet.confidence is None and wallet.location_description == "On the desk beside the mug"
+
+
+def test_unscored_selection_is_deterministic(session: Session) -> None:
+    zones = setup_world(session)
+    save(session, "incoming/a.jpg", NINE, [on_right("keys", None), on_left("keys", None)])
+    assert item(session, "keys").last_zone_id == zones["couch"]
+
+
+def test_absence_preserves_location_and_history(session: Session) -> None:
+    from ctrlf_db.repo import lookup_last_sighting
+    setup_world(session)
+    prior = save(session, "incoming/a.jpg", NINE, [on_left("keys", None)])
+    save(session, "incoming/b.jpg", TEN, [], targets=["keys"])
+    keys = item(session, "keys")
+    assert keys.last_photo_id == prior.photo_id and keys.last_seen_at == NINE
+    evidence = lookup_last_sighting(session, keys.id, TEN)
+    assert evidence["photo_id"] == str(prior.photo_id)
+    assert evidence["seen_at"] == NINE.isoformat()
+    assert lookup_last_sighting(session, keys.id, NINE) is None
+
+
+def test_last_seen_survives_new_session(session: Session) -> None:
+    from ctrlf_db.repo import lookup_last_sighting
+    setup_world(session)
+    prior = save(session, "incoming/restart.jpg", NINE, [
+        Box("wallet", None, on_left("wallet").bbox, "On the couch beside the cushion")
+    ])
+    wallet_id = item(session, "wallet").id
+    with Session(session.get_bind()) as fresh:
+        evidence = lookup_last_sighting(fresh, wallet_id, TEN)
+        assert evidence["photo_id"] == str(prior.photo_id)
+        assert evidence["location_description"] == "On the couch beside the cushion"

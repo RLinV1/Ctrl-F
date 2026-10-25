@@ -6,7 +6,7 @@ People lose small items (keys, wallet, phone, remote, glasses) at home. They ret
 
 ## Solution
 
-A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item by voice. The system photographs the scene, finds the item with YOLO, answers by voice, and records the sighting with a snapshot.
+A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item by voice. The system photographs the scene, finds the item through Hermes image analysis, answers by voice, and records the sighting with a snapshot.
 
 ## Users
 
@@ -38,15 +38,15 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 
 | ID | Requirement |
 | --- | --- |
-| F1 | Record audio from the user's microphone in the browser (the Pi has no mic), send it as a job, and transcribe it on the desktop. |
-| F2 | Identify the target item from the transcript via the vision model (no LLM). Normalize to a canonical item name. |
+| F1 | Record browser audio for web requests or Logitech webcam audio for Pi-button requests; transcribe with ElevenLabs through the shared web pipeline. |
+| F2 | Normalize the transcript to canonical tracked item names and aliases before image analysis, retaining the current target picker. |
 | F3 | Pi captures a photo on command and transmits it to the desktop. |
-| F4 | Desktop runs object detection on the photo and returns all detections (label, confidence, bbox). |
-| F5 | Match the target to detections. Support items outside the base YOLO classes (see Risks). |
-| F6 | Store the snapshot in object storage and a sighting row in Postgres, for every capture. |
-| F7 | Mark an item "lost" when a request finds no match. Increment its lost count. |
-| F8 | Generate a short spoken reply (Gemini as a witty steampunk narrator, ElevenLabs TTS) with location in the frame and last-seen time. |
-| F9 | Web UI lists items, last-seen snapshot with bbox overlay, history, and lost count. |
+| F4 | The processing worker calls Hermes to identify all visible tracked objects, with validated boxes, grounded location descriptions and optional confidence. |
+| F5 | Match targets to validated observations independently of YOLO classes, and retrieve prior Postgres sightings when absent. |
+| F6 | Store each search snapshot privately and persist all visible tracked-object sightings in Postgres, including incidental objects. |
+| F7 | Increment a tracked target's lost count once when successful analysis finds no match; preserve last-seen location and do not count processing failures as losses. |
+| F8 | Generate a short spoken reply (Gemini as a witty steampunk narrator, ElevenLabs TTS) with current location or last-seen location/time, played through the open browser for either trigger. |
+| F9 | Web UI lists items, marked current or last-seen snapshots, location/time, history, and lost count, distinguishing unavailable history from never seen. |
 | F10 | Web UI hosted on Vercel at a custom GoDaddy domain. Deferred: v1 runs locally with Docker Compose. See `docs/TECH_STACK_LIVE.md`. |
 
 ## Theme
@@ -68,11 +68,11 @@ Steampunk. Brass, copper, aged paper, gears, gauges, Victorian type. It applies 
 
 ## Risks and open questions
 
-- **COCO has no keys, wallet, or earbuds.** Stock YOLO cannot find them. Decision: we train (fine-tune) YOLO on our own labeled images of the target items. Plan in `docs/TRAINING.md`. Only trained classes can be found, so the class list defines what Ctrl-F supports.
+- **Small-object grounding.** The active runtime uses a vision-capable Hermes Agent, with all observed tracked objects persisted in Postgres. Evaluate keys/wallet localization on real Pi photos; a valid response alone does not establish accuracy. Training utilities remain optional historical tools.
 - **Vercel cannot reach the desktop or Pi.** The Pi polls the web API for jobs (outbound only) and forwards photos to the desktop on the LAN. Do not expose the desktop or Pi to the internet.
 - **Storage choice.** Managed (Cloudflare R2 or Supabase Storage + Neon/Supabase Postgres) vs self-hosted SeaweedFS. Default: managed. SeaweedFS needs a VPS.
 - **Trigger mode.** On-demand capture only (v1) vs periodic background snapshots (builds history without asking). Periodic snapshots make "last seen" much more useful; decide after v1 works.
-- **Audio.** Decided: the website records the mic and plays the reply, since the Pi has no mic. Wake word is out of scope; the UI uses push-to-talk.
+- **Audio.** Decided: web requests use the browser mic; physical-button requests use the Logitech webcam mic. Both replies play through the single open browser. Wake word is out of scope.
 - **Pi as relay.** The Pi claims jobs by polling the web API (outbound) and forwards photos to the desktop on the LAN. Open: Pi and desktop must share a network (or use Tailscale).
 
 ## Roadmap
@@ -83,3 +83,9 @@ Steampunk. Brass, copper, aged paper, gears, gauges, Victorian type. It applies 
 4. M3: Postgres + storage, sighting history, lost counts.
 5. M4: Next.js UI running locally via Docker Compose. Deploy to Vercel and the GoDaddy domain after that (see `docs/TECH_STACK_LIVE.md`).
 6. M5: Periodic snapshots, open-vocabulary detection tuning, polish.
+
+## Current transition
+
+`replace-yolo-with-hermes` supersedes the YOLO portions of the original roadmap.
+The active dev transport is the outbound S3 job relay described in ARCHITECTURE.md.
+Deployment and physical acceptance run on the actual service hosts; see DEPLOYMENT.md.

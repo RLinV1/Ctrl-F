@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
+import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 
 /** Postgres rows, or null when it is not configured or down, so the caller falls back to reading the bucket. */
@@ -20,7 +20,7 @@ import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } from "./types";
 
 /*
- * One bucket, no database, and the web app's credentials are narrow: it may only write and delete
+ * One private relay bucket plus Postgres sighting history; web S3 credentials are narrow: it may only write and delete
  * jobs/ and read incoming/ and results/ (see docs/ARCHITECTURE.md). So:
  *   jobs/<id>.json                web -> Pi:  {"text", "targets"}. The Pi polls jobs/, claims a job by deleting it.
  *   incoming/<id>.json + .jpg     the Pi's copy of the job and its photo; the processing server polls these
@@ -45,7 +45,8 @@ type Stored = {
   id: string;
   seenAt: string;
   label: string;
-  confidence: number;
+  confidence: number | null;
+  locationDescription?: string | null;
   box: Box;
   snapshotKey: string;
   width: number;
@@ -91,12 +92,17 @@ export class S3Store implements Store {
   private finishing = new Map<string, Promise<JobRec>>();
   private replies = new Map<string, Buffer>();
   private speaking = new Set<string>();
-  private picks = new Map<string, Promise<void>>(); // Gemini choosing the items, running while the Pi takes the photo
   private results: { at: number; rows: StoredResult[] } | null = null;
   private known: { at: number; list: string[] } | null = null;
   private parsed = new Map<string, Result>(); // result files never change once written, so each is downloaded once
 
-  constructor() {
+  private services: { transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets };
+  private signOverride?: (key: string) => Promise<string>;
+
+  constructor(dependencies: { client?: S3Client; sign?: (key: string) => Promise<string>;
+    services?: Partial<{transcribe: typeof transcribe; narrate: typeof narrate; speak: typeof speak; pickTargets: typeof pickTargets}> } = {}) {
+    this.services = { transcribe, narrate, speak, pickTargets, ...dependencies.services };
+    this.signOverride = dependencies.sign;
     const config = (endpoint?: string) => ({
       endpoint: endpoint || undefined,
       forcePathStyle: Boolean(endpoint),
@@ -105,7 +111,7 @@ export class S3Store implements Store {
         ? { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "" }
         : undefined,
     });
-    this.client = new S3Client(config(process.env.S3_ENDPOINT));
+    this.client = dependencies.client ?? new S3Client(config(process.env.S3_ENDPOINT));
     // Signed URLs go to the browser, so they may need a different host than the server uses.
     this.signer = new S3Client(config(process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT));
     void this.knownItems(); // warm the caches so the first question is as fast as the rest
@@ -123,6 +129,7 @@ export class S3Store implements Store {
   }
 
   private sign(key: string) {
+    if (this.signOverride) return this.signOverride(key);
     return getSignedUrl(this.signer, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: SIGN_SECONDS });
   }
 
@@ -153,7 +160,7 @@ export class S3Store implements Store {
             result = await this.getJson<Result>(f.key).catch(() => null);
             if (result) this.parsed.set(cacheKey, result);
           }
-          return result ? { id, at: f.at.toISOString(), result } : null;
+          return result && result.status !== "failed" ? { id, at: f.at.toISOString(), result } : null;
         }),
       )
     ).filter((r): r is StoredResult => r !== null);
@@ -166,7 +173,7 @@ export class S3Store implements Store {
   private sightings(rows: StoredResult[]): Stored[] {
     return rows.flatMap(({ id, at, result }) => {
       const best = new Map<string, Detection>();
-      for (const d of result.detections ?? []) if (d.conf > (best.get(d.name)?.conf ?? 0)) best.set(d.name, d);
+      for (const d of result.detections ?? []) if (!best.has(d.name) || (d.conf ?? -1) > (best.get(d.name)?.conf ?? -1)) best.set(d.name, d);
       return [...best].map(([name, d]) => this.stored(id, at, result, d, name));
     });
   }
@@ -174,9 +181,10 @@ export class S3Store implements Store {
   private stored(id: string, at: string, result: Result, d: Detection, label: string): Stored {
     return {
       id: `${id}:${label}`,
-      seenAt: at,
+      seenAt: result.captured_at ?? at,
       label,
       confidence: d.conf,
+      locationDescription: d.location_description,
       box: toBox(d),
       snapshotKey: photoKey(id),
       width: result.width ?? DEFAULT_SIZE.width,
@@ -188,6 +196,11 @@ export class S3Store implements Store {
   private async knownItems(): Promise<string[]> {
     if (this.known && Date.now() - this.known.at < 60_000) return this.known.list;
     try {
+      const tracked = await fromPg(pgItems);
+      if (tracked?.length) {
+        this.known = { at: Date.now(), list: tracked.map(i => i.name) };
+        return this.known.list;
+      }
       const withList = (await this.recentResults()).find((r) => r.result.known?.length);
       this.known = { at: Date.now(), list: withList?.result.known ?? KNOWN_ITEMS };
     } catch {
@@ -200,7 +213,7 @@ export class S3Store implements Store {
     const t0 = Date.now();
     let transcript = "";
     try {
-      transcript = await transcribe(audio, `recording.${audioExtension(contentType)}`);
+      transcript = await this.services.transcribe(audio, `recording.${audioExtension(contentType)}`);
     } catch (error) {
       console.error("[stt]", error); // no transcript: the narrator asks what they are looking for
     }
@@ -213,20 +226,25 @@ export class S3Store implements Store {
     return this.queue(text.trim(), "web");
   }
 
-  async latestJobId(source: JobSource, since: string) {
+  async latestJobId(source: JobSource, since: string, afterId = "") {
     const after = Date.parse(since);
     const newest = [...this.jobs.values()]
-      .filter((j) => (j.source ?? "web") === source && Date.parse(j.createdAt) > after)
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+      .filter((j) => (j.source ?? "web") === source && (Date.parse(j.createdAt) > after || (Date.parse(j.createdAt) === after && j.id > afterId)))
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id))[0];
     return newest?.id ?? null;
   }
 
   private async queue(transcript: string, source: JobSource): Promise<JobView> {
     const tStt = Date.now();
     const known = await this.knownItems();
-    // Items named plainly go to the Pi at once. Otherwise the job goes with no items and Gemini picks them while the photo is
-    // taken; the detections in the result are enough to say whether each one is in view.
-    const targets = namedItems(transcript, known);
+    // Resolve targets before queueing so the worker can query memory for each missing item.
+    let targets = namedItems(transcript, known);
+    let unsupported: string | null = null;
+    if (!targets.length && transcript.trim()) {
+      const picked = await this.services.pickTargets(transcript, known);
+      targets = picked.targets;
+      unsupported = picked.unsupported;
+    }
     const rec: JobRec = {
       id: randomUUID(),
       source,
@@ -234,21 +252,9 @@ export class S3Store implements Store {
       createdAt: new Date().toISOString(),
       transcript,
       targets,
-      unsupported: null,
+      unsupported,
     };
     console.log(`[job] ${rec.id} said ${JSON.stringify(transcript)} -> targets ${JSON.stringify(targets)}, writing jobs/`);
-    this.jobs.set(rec.id, rec);
-    if (!targets.length && transcript.trim()) {
-      this.picks.set(
-        rec.id,
-        pickTargets(transcript, known)
-          .then((picked) => {
-            const cur = this.jobs.get(rec.id);
-            if (cur) this.jobs.set(rec.id, { ...cur, targets: picked.targets, unsupported: picked.unsupported });
-          })
-          .catch((error) => console.error("[pick]", error)),
-      );
-    }
     // Every request goes to the bucket for the Pi to poll, even one that names no item: the photo still comes back.
     await this.client.send(
       new PutObjectCommand({
@@ -258,6 +264,7 @@ export class S3Store implements Store {
         ContentType: "application/json",
       }),
     );
+    this.jobs.set(rec.id, rec);
     console.log(`[timing] ${rec.id.slice(0, 8)} send: writing job ${Date.now() - tStt} ms`);
     for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
     return this.view(rec);
@@ -299,7 +306,9 @@ export class S3Store implements Store {
 
   private async hasResult(id: string) {
     const keys = new Set((await this.list(`results/${id}_result.`)).map((o) => o.key));
-    return keys.has(resultKey(id)) && keys.has(photoKey(id));
+    if (!keys.has(resultKey(id))) return false;
+    const result = await this.getJson<Result>(resultKey(id));
+    return result?.status === "failed" || keys.has(photoKey(id));
   }
 
   /** Narrate a job once, even if several polls arrive while it runs. */
@@ -318,15 +327,13 @@ export class S3Store implements Store {
   }
 
   private async narrateJob(start: JobRec, correction?: boolean): Promise<JobRec> {
-    // Wait for Gemini's choice of items if it has not finished (it has had the photo's whole trip), but not for long.
-    await Promise.race([this.picks.get(start.id), new Promise((resolve) => setTimeout(resolve, 6000))]);
-    this.picks.delete(start.id);
     const rec = this.jobs.get(start.id) ?? start;
     const raw = rec.result ?? ((await this.getJson<Result>(resultKey(rec.id))) as Result);
+    if (raw.status === "failed") return this.update(rec, { status: "failed", error: raw.error ?? "Image analysis failed." });
     // The processing server was not told which items to look for: say from its detections.
     const detected = raw.status === "no_target" && rec.targets.length ? findings(rec.targets, raw) : raw;
     let result = detected;
-    // The processing server only knows the classes it was trained on; an item we cannot seek arrives as "no_target".
+    // Targets outside the configured tracked-item catalog are reported explicitly.
     if (result.status === "no_target" && rec.unsupported) result = { ...result, status: "unsupported", target: rec.unsupported };
     // The user's verdict beats the detector's. "Found" with no match has no box to draw and no place to name.
     if (correction !== undefined) {
@@ -336,9 +343,16 @@ export class S3Store implements Store {
 
     // Last seen: the newest earlier result with this item in it.
     this.results = null;
-    const earlier = result.target
-      ? this.sightings((await this.recentResults()).filter((r) => r.id !== rec.id)).find((s) => s.label === result.target)
-      : undefined;
+    let earlier: Stored | undefined;
+    if (result.last_sighting) earlier = this.historical(result.last_sighting);
+    else if (result.version !== 2 && result.target) {
+      const prior = await fromPg(() => pgSightings(result.target!, 1, result.captured_at ?? rec.createdAt));
+      if (prior?.[0]) {
+        earlier = prior[0];
+        result = { ...result, history_status: "available", last_sighting: undefined };
+      } else result = { ...result, history_status: prior ? "never_seen" : "unavailable" };
+    }
+
 
     const match =
       result.status === "found" && result.matches[0]
@@ -346,19 +360,21 @@ export class S3Store implements Store {
         : null;
     this.replies.delete(rec.id); // a correction replaces the earlier spoken reply
     const tNarrate = Date.now();
-    const text = await narrate(factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null));
+    const facts = factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null);
+    if (earlier && !result.last_sighting) facts.last_seen = { at: earlier.seenAt, location: earlier.locationDescription || earlier.zone || "the recorded position in the photo" };
+    const text = await this.services.narrate(facts);
     const tText = Date.now();
 
     const done: JobRec = {
       ...rec,
       status: "done",
-      result: detected,
+      result,
       corrected: correction !== undefined,
       target: result.target,
       found: result.status === "found" ? true : result.status === "not_visible" ? false : null, // null: no item was searched for
       replyText: text,
       replyTimings: null, // arrive with the audio
-      photo: { key: photoKey(rec.id), seenAt: now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
+      photo: { key: photoKey(rec.id), seenAt: result.captured_at ?? now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
       match,
       lastSighting: result.status === "not_visible" ? (earlier ?? null) : null,
     };
@@ -371,7 +387,7 @@ export class S3Store implements Store {
   /** The answer is shown as soon as the text is ready; the speech (audio and word times) follows in the background. */
   private startSpeech(id: string, text: string) {
     this.speaking.add(id);
-    speak(text)
+    this.services.speak(text)
       .then((spoken) => {
         this.replies.set(id, spoken.audio);
         for (const old of [...this.replies.keys()].slice(0, -REPLY_CACHE)) this.replies.delete(old);
@@ -392,12 +408,19 @@ export class S3Store implements Store {
     }
   }
 
+  private historical(s: HistoryEvidence): Stored {
+    return { id: s.detection_id, seenAt: s.seen_at, label: s.label, confidence: s.confidence,
+      locationDescription: s.location_description, box: s.bbox, zone: s.zone,
+      snapshotKey: s.annotated_key || s.s3_key, width: s.width, height: s.height };
+  }
+
   private async sighting(s: Stored): Promise<Sighting> {
     return {
       id: s.id,
       seenAt: s.seenAt,
       label: s.label,
       confidence: s.confidence,
+      locationDescription: s.locationDescription,
       box: s.box,
       zone: s.zone ?? `${where([s.box.x, s.box.y, s.box.x + s.box.w, s.box.y + s.box.h])} of the frame`,
       snapshot: { id: s.snapshotKey, url: await this.sign(s.snapshotKey), width: s.width, height: s.height },
@@ -424,6 +447,7 @@ export class S3Store implements Store {
       photo: rec.photo ? { id: rec.photo.key, url: await this.sign(rec.photo.key), width: rec.photo.width, height: rec.photo.height, seenAt: rec.photo.seenAt } : null,
       match: rec.match ? await this.sighting(rec.match) : null,
       lastSighting: rec.lastSighting ? await this.sighting(rec.lastSighting) : null,
+      historyStatus: rec.result?.history_status,
       error: rec.error ?? null,
     };
   }
@@ -449,10 +473,11 @@ export class S3Store implements Store {
     const rows =(await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
       const mine = this.jobs.get(id);
       if (mine) return mine;
-      const first = result.matches[0];
+      const first = result.matches?.[0];
       return {
         id,
-        status: "done",
+        status: result.status === "failed" ? "failed" : "done",
+        error: result.error,
         createdAt: at,
         transcript: "",
         targets: [],

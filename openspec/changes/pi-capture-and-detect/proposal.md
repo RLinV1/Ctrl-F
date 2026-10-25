@@ -1,3 +1,9 @@
+> Reconciliation: `replace-yolo-with-hermes` supersedes this change's active
+> search-path assumptions about YOLO, browser-only audio, optional sighting memory,
+> and device discovery. Keep completed unrelated work and training utilities.
+> Do not archive the superseded search contracts independently; use the current
+> contracts and reconciliation map in `replace-yolo-with-hermes/design.md`.
+
 ## Why
 
 Ctrl-F cannot do anything until a photo from the Raspberry Pi can be turned into object detections on the desktop. This is the first vertical slice (milestone M1): it proves the camera, the network hop and the custom YOLO model work together before voice, storage, and the web UI are built on top.

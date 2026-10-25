@@ -1,6 +1,8 @@
 alembic>=1.13
 boto3
+httpx>=0.28,<1
 psycopg[binary]>=3.2
 python-dotenv
 sqlalchemy>=2.0
-ultralytics
+Pillow>=11
+mcp>=1.20,<2

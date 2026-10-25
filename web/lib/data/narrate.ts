@@ -1,11 +1,17 @@
 /** Ported from main's dev-test/find.py and dev-test/narrator.py: where() and near() word a box, Gemini words the reply, ElevenLabs does STT and TTS. */
 import type { WordTime } from "./types";
 
-export type Detection = { name: string; conf: number; box: [number, number, number, number] };
-export type ItemResult = { item: string; status: "found" | "not_visible"; matches: Detection[] };
+export type Detection = { name: string; conf: number | null; location_description?: string | null; box: [number, number, number, number] };
+export type HistoryEvidence = { detection_id: string; photo_id: string; item_id: string; seen_at: string; label: string;
+  confidence: number | null; bbox: { x: number; y: number; w: number; h: number }; location_description: string | null;
+  zone: string | null; s3_key: string; annotated_key: string | null; width: number; height: number };
+export type HistoryStatus = "available" | "never_seen" | "unavailable" | "not_needed";
+export type ItemResult = { item: string; status: "found" | "not_visible"; matches: Detection[];
+  history_status?: HistoryStatus; last_sighting?: HistoryEvidence | null };
 /** results/<id>_result.json, written by desktop/server.py. `unsupported` is added here for a request that names no known item. */
 export type Result = {
-  status: "found" | "not_visible" | "no_target" | "unsupported";
+  status: "found" | "not_visible" | "no_target" | "unsupported" | "failed";
+  version?: number; captured_at?: string; history_status?: HistoryStatus; last_sighting?: HistoryEvidence | null; error?: string;
   target: string | null;
   matches: Detection[];
   items?: ItemResult[];
@@ -30,7 +36,7 @@ Rules:
 - If "items" lists several things, say about each one in the order given, one short clause each.
 - Say plainly whether the item was found. If found, give where it is in the frame using the "where" field, and mention "next_to" if present.
 - If status is "found" and there is no "where" field, the user has confirmed it is in the photo: say you take their word for it, and give no place.
-- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen_ago" is present, say how long ago it was last seen, and never say where. If "never_seen_before" is true, say the camera has never seen it. Never state or guess a time or place that is not in the JSON.
+- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen" is present, say its stored location and time, clearly as a past sighting. If "history_status" is "unavailable", say history cannot currently be checked; do not say never seen. If only "last_seen_ago" is present, say how long ago it was last seen. If "never_seen_before" is true, say the camera has never seen it. Never state or guess a time or place that is not in the JSON.
 - If status is "unsupported", say you cannot yet seek that item.
 - If status is "no_target", ask what they are looking for.
 - Always use the item's plain name (for example "phone", not a nickname). Never offer actions you cannot do, such as fetching or retrieving it.
@@ -63,10 +69,10 @@ export function near(target: Detection, detections: Detection[]): string | null 
 function entry(item: string, status: string, matches: Detection[], detections: Detection[]) {
   const out: Record<string, unknown> = { item, status };
   if (matches[0]) {
-    out.where = where(matches[0].box);
+    out.where = matches[0].location_description || where(matches[0].box);
     const rel = near(matches[0], detections);
     if (rel) out.next_to = rel;
-    out.confidence_percent = Math.round(matches[0].conf * 100);
+    if (matches[0].conf != null) out.confidence_percent = Math.round(matches[0].conf * 100);
   }
   return out;
 }
@@ -74,7 +80,7 @@ function entry(item: string, status: string, matches: Detection[], detections: D
 /** What the camera's detections say about the items asked for, when the processing server was not told which to look for. */
 export function findings(targets: string[], base: Result): Result {
   const items: ItemResult[] = targets.map((item) => {
-    const matches = base.detections.filter((d) => d.name === item).sort((a, b) => b.conf - a.conf);
+    const matches = base.detections.filter((d) => d.name === item).sort((a, b) => (b.conf ?? -1) - (a.conf ?? -1));
     return { item, status: matches.length ? "found" : "not_visible", matches };
   });
   const first = items.find((i) => i.matches.length) ?? items[0];
@@ -85,14 +91,22 @@ export function findings(targets: string[], base: Result): Result {
 export function factsFor(result: Result, lastSeen?: string | null) {
   const facts: Record<string, unknown> = { status: result.status, item: result.target };
   if (result.items && result.items.length > 1) {
-    facts.items = result.items.map((i) => entry(i.item, i.status, i.matches, result.detections));
+    facts.items = result.items.map((i) => ({ ...entry(i.item, i.status, i.matches, result.detections), ...historyFacts(i.history_status, i.last_sighting) }));
   } else if (result.target) {
     Object.assign(facts, entry(result.target, result.status, result.matches, result.detections));
   }
   if (result.status === "no_target") facts.items_i_can_find = result.known ?? KNOWN_ITEMS;
-  if (lastSeen) facts.last_seen_ago = lastSeen;
-  else if (result.status === "not_visible") facts.never_seen_before = true;
+  if (result.history_status) Object.assign(facts, historyFacts(result.history_status, result.last_sighting));
+  else if (lastSeen) facts.last_seen_ago = lastSeen;
+  else if (result.status === "not_visible") facts.history_status = "unavailable";
   return facts;
+}
+
+function historyFacts(status?: HistoryStatus, sighting?: HistoryEvidence | null) {
+  if (status === "available" && sighting) return { history_status: status,
+    last_seen: { at: sighting.seen_at, location: sighting.location_description || sighting.zone || "the recorded position in the photo" } };
+  if (status === "never_seen") return { history_status: status, never_seen_before: true };
+  return status === "unavailable" ? { history_status: status } : {};
 }
 
 /** One call to Gemini. A request that has not answered after HEDGE_MS is not abandoned but joined by a second; the first answer wins. */
@@ -129,10 +143,16 @@ async function gemini(body: object): Promise<string> {
 }
 
 /** Plain wording for when Gemini is down or has no key, so a finished search still answers. */
-function plainReply(facts: Record<string, unknown>): string {
+export function plainReply(facts: Record<string, unknown>): string {
   const item = facts.item ?? "that";
-  if (facts.status === "found") return `Your ${item} is ${facts.where}${facts.next_to ? `, ${facts.next_to}` : ""}.`;
-  if (facts.status === "not_visible") return `I cannot see your ${item} just now. Try checking another spot.`;
+  if (facts.status === "found") return `Your ${item} ${String(item).endsWith("s") ? "are" : "is"} ${facts.where}${facts.next_to ? `, ${facts.next_to}` : ""}.`;
+  if (facts.status === "not_visible") {
+    const prior = facts.last_seen as {at: string; location: string} | undefined;
+    if (prior) return `I cannot see your ${item} now. They were last seen ${prior.location} at ${prior.at}.`;
+    if (facts.history_status === "unavailable") return `I cannot see your ${item} now, and history cannot currently be checked.`;
+    if (facts.never_seen_before) return `I cannot see your ${item} now. The camera has not seen it before.`;
+    return `I cannot see your ${item} just now. Try checking another spot.`;
+  }
   if (facts.status === "unsupported") return `I cannot yet seek the ${item}.`;
   return "What are you looking for?";
 }

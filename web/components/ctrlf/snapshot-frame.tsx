@@ -6,7 +6,7 @@ import type { Box } from "@/lib/data/types";
 import { useAnime } from "@/lib/motion/use-anime";
 import { cn } from "@/lib/utils";
 
-export type FrameMark = { box: Box; label: string; confidence?: number };
+export type FrameMark = { box: Box; label: string; confidence?: number | null };
 
 const pct = (n: number) => `${(n * 100).toFixed(3)}%`;
 

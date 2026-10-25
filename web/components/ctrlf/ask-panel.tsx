@@ -193,6 +193,9 @@ function AskSession() {
   const { mic, start, stop } = useRecorder();
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [replyBusy, setReplyBusy] = useState(false);
+  const onSettled = useCallback(() => setReplyBusy(false), []);
   const [mode, setMode] = useState<AskMode>("type");
   // The prompt floats over the stage; minimising it clears the narrator's dialogue.
   const [minimized, setMinimized] = useState(false);
@@ -247,6 +250,7 @@ function AskSession() {
   }, [phase]);
 
   const onHoldStart = () => {
+    setReplyBusy(true);
     setPhase({ kind: "recording" });
     holdRef.current = start();
   };
@@ -274,6 +278,7 @@ function AskSession() {
   };
 
   const askText = async (text: string) => {
+    setReplyBusy(true);
     setPhase({ kind: "sending" });
     try {
       const res = await fetch("/api/jobs", {
@@ -290,6 +295,7 @@ function AskSession() {
   };
 
   const onCameraJob = useCallback((id: string) => {
+    setReplyBusy(true);
     setPhase({ kind: "waiting", job: null, jobId: id });
   }, []);
 
@@ -308,7 +314,7 @@ function AskSession() {
   const micBlocked = mic === "denied" || mic === "unavailable";
   const working = phase.kind === "sending" || phase.kind === "waiting";
   const answer = phase.kind === "answered" ? phase.job : null;
-  useCameraJobs(mode === "camera" && !working, onCameraJob);
+  useCameraJobs(!working && !recording && (phase.kind !== "answered" || !replyBusy), onCameraJob);
 
   const changeMode = (next: string) => {
     setMode(next as AskMode);
@@ -358,9 +364,18 @@ function AskSession() {
 
   return (
     <div className="flex min-h-[calc(100dvh-120px)] flex-col gap-4">
+      {!audioEnabled && <button className="self-end text-sm underline" disabled={greeting === null} type="button" onClick={() => {
+        setAudioEnabled(true);
+        try {
+          const context = new AudioContext();
+          void context.resume().catch(() => {});
+          window.setTimeout(() => { void context.close().catch(() => {}); }, 1000);
+        } catch { /* explicit reply play remains available */ }
+      }}>Enable audio for camera replies</button>}
       <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
         <Stage
           answer={answer}
+          onSettled={onSettled}
           aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
           key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
           line={line}
@@ -382,7 +397,7 @@ function AskSession() {
       <AI_Prompt
         action={action}
         body={body}
-        busy={working}
+        busy={working || greeting === null}
         mode={mode}
         modes={MODES}
         onModeChange={changeMode}

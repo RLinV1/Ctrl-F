@@ -102,33 +102,32 @@ export function useElapsed(running: boolean) {
  * and hands the job to `onJob`.
  */
 export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
-  const sinceRef = useRef("");
+  const cursor = useRef<{since: string; afterId: string} | null>(null);
   useEffect(() => {
+    if (!cursor.current) {
+      try { cursor.current = JSON.parse(sessionStorage.getItem("ctrlf-device-cursor") || "null"); } catch { /* unavailable */ }
+      cursor.current ||= { since: new Date().toISOString(), afterId: "" };
+    }
     if (!listening) return;
-    // Only questions asked at the camera from now on.
-    sinceRef.current ||= new Date().toISOString();
     let alive = true;
     let timer = 0;
     const poll = async () => {
       try {
-        const res = await fetch(`/api/jobs/latest?source=device&since=${encodeURIComponent(sinceRef.current)}`, {
-          cache: "no-store",
-        });
+        const {since, afterId} = cursor.current!;
+        const res = await fetch(`/api/jobs/latest?source=device&since=${encodeURIComponent(since)}&afterId=${encodeURIComponent(afterId)}`, { cache: "no-store" });
         if (alive && res.status === 200) {
-          const { id } = await res.json();
-          sinceRef.current = new Date().toISOString();
-          onJob(id);
-          return;
+          const { id, createdAt } = await res.json();
+          if (typeof id === "string" && typeof createdAt === "string" && Number.isFinite(Date.parse(createdAt))
+            && (Date.parse(createdAt) > Date.parse(since) || (createdAt === since && id > afterId))) {
+            cursor.current = { since: createdAt, afterId: id };
+            try { sessionStorage.setItem("ctrlf-device-cursor", JSON.stringify(cursor.current)); } catch { /* unavailable */ }
+            onJob(id);
+          }
         }
-      } catch {
-        // Try again on the next tick.
-      }
+      } catch { /* Retry without advancing the server cursor. */ }
       if (alive) timer = window.setTimeout(poll, DEVICE_POLL_MS);
     };
     timer = window.setTimeout(poll, DEVICE_POLL_MS);
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
+    return () => { alive = false; window.clearTimeout(timer); };
   }, [listening, onJob]);
 }

@@ -1,175 +1,147 @@
 # Architecture
 
-## Summary
+## Active search flow
 
-The website is the voice interface: the browser records the user's microphone and plays the reply. The Raspberry Pi takes photos and relays each request to the desktop. The desktop runs the models. Vercel never calls the Pi or the desktop.
-
-```
- Browser (user)        Vercel + Cloud                      Pi (edge)              Desktop (brain)
- --------------        --------------                      ---------              ---------------
- mic -> audio  ---->   /api/jobs  -> jobs row + R2 audio
-                                          ^   |
-                                          |   +-- Pi polls /api/jobs/next (outbound HTTPS)
-                                          |                 camera -> JPEG
-                                          |                 POST photo + job_id --LAN--> /process
-                                          |                                              STT (ElevenLabs)
-                                          |                                              target, YOLO, match, memory
-                                          |                                              Gemini steampunk narrator
-                                          +---- writes sightings, reply, audio <-------- TTS (ElevenLabs)
- speaker <---- polls /api/jobs/:id -> reply text + signed audio URL
-```
-
-## Design rules
-
-- **Browser owns audio I/O.** It records with `MediaRecorder` and plays the reply audio. The Pi has no microphone.
-- **Pi is the camera and the relay.** It claims a job, captures a photo, and forwards photo + job id to the desktop on the LAN. It runs no models.
-- **Desktop owns all intelligence.** STT, target extraction, YOLO, matching, memory, narrator, TTS. It writes results to Postgres and R2 directly.
-- **Vercel never calls the Pi or desktop.** The Pi and desktop make outbound calls only. The job table in Postgres is the hand-off between the web and the Pi.
-- **One job = one voice request.** Status moves `pending -> claimed -> done | failed`.
-- **Storage uses the S3 API only**, so R2 can be swapped for SeaweedFS.
-- **Memory is plain SQL.** Last seen = `items.last_seen_at` / `last_zone_id` / `last_photo_id` (a cached copy of the newest detection). Lost count = `items.lost_count`. No vector DB.
-- **Periodic scans** (optional, M5) are a desktop scheduler calling the same detect-and-store function.
-- **Network:** Pi and desktop share a LAN. If not, use Tailscale. Do not open inbound ports.
-
-## Request flow (voice query)
-
-1. User holds push-to-talk on the website. Browser records audio.
-2. Browser uploads the clip to R2 (presigned URL) and calls `POST /api/jobs`, which creates a `jobs` row with `status = pending`.
-3. Pi polls `GET /api/jobs/next` with its bearer token. It receives one job and marks it `claimed`.
-4. Pi captures a JPEG and sends it with the job id to the desktop: `POST {DESKTOP_BASE_URL}/process`.
-5. Desktop downloads the audio, calls ElevenLabs STT, and reduces the transcript to a target item name by matching it against the trained class list. No LLM.
-6. Desktop runs the custom-trained YOLO model on the JPEG and matches the target to detections.
-7. Desktop stores the JPEG and inserts a `photos` row plus one `detections` row per box, and updates each found item's last location. If the target was not found, it increments `items.lost_count`.
-8. Gemini, as a witty steampunk narrator, writes a one or two sentence reply. ElevenLabs TTS turns it into audio stored in R2.
-9. Desktop updates the job: `status = done`, `reply_text`, `reply_audio_key`.
-10. Browser polls `GET /api/jobs/:id`, shows the reply, and plays the audio from a signed URL.
-
-## Data model (Postgres)
-
-Owned by `desktop/`: SQLAlchemy models in `desktop/ctrlf_db/models.py`, Alembic migrations in `desktop/migrations/`. Every table has a UUID primary key (`gen_random_uuid()`). Media stays in S3, and rows store the object key, never a URL (photos are private, so readers sign the key when they show it).
+Ctrl-F has one Pi, one processing worker, one private S3-compatible bucket,
+Postgres, a separately configured vision-capable Hermes Agent and one open browser.
+The processing worker calls Hermes; the web never calls the Pi or processing host.
 
 ```
-items                      -- a tracked thing
-  id             uuid pk
-  name           text unique       -- lowercase, matches a model class ("keys")
-  aliases        text[]
-  lost_count     int default 0
-  last_zone_id   uuid fk zones null    -- last location
-  last_seen_at   timestamptz null
-  last_photo_id  uuid fk photos null
-  created_at     timestamptz
-
-photos                     -- one camera photo
-  id             uuid pk
-  s3_key         text unique       -- incoming/<job>.jpg
-  annotated_key  text null         -- results/<job>_result.jpg (boxes drawn)
-  taken_at       timestamptz       -- S3 upload time until the Pi sends its capture time
-  width, height  int
-  model_version  text null
-  job_id         uuid fk jobs null
-  created_at     timestamptz
-
-detections                 -- join table: which items each photo shows
-  id             uuid pk
-  photo_id       uuid fk photos (cascade)
-  item_id        uuid fk items null    -- null for classes we don't track
-  label          text
-  confidence     real
-  bbox           jsonb             -- {x, y, w, h} normalized 0..1
-  zone_id        uuid fk zones null
-  seen_at        timestamptz       -- copy of photos.taken_at
-  index (item_id, seen_at desc)
-
-zones                      -- named areas of the fixed camera view
-  id             uuid pk
-  name           text unique       -- "desk", "couch"
-  polygon        jsonb             -- [[x, y], ...] normalized 0..1
-  created_at     timestamptz
-
-jobs                       -- one voice request (replaces the earlier queries draft)
-  id               uuid pk         -- the id in jobs/<id>.json and incoming/<id>.jpg
-  status           text            -- pending | claimed | done | failed
-  audio_key        text null
-  transcript       text null
-  targets          text[]
-  found            boolean null
-  corrected        boolean default false
-  reply_text       text null
-  reply_audio_key  text null
-  reply_timings    jsonb null      -- [{word, start, end}]
-  error            text null
-  created_at, claimed_at, finished_at  timestamptz
-  index (status, created_at)
-
-device_heartbeats
-  device         text pk           -- pi | desktop
-  last_seen_at   timestamptz
+Browser mic -------------------> web /api/jobs
+Pi button -> Logitech mic -----> web /api/device/jobs (Pi bearer token)
+                                      |
+                                ElevenLabs STT
+                                target normalization
+                                      |
+                                S3 jobs/<id>.json
+                                      |
+                        Pi polls, claims, takes fresh JPEG
+                                      |
+                  S3 incoming/<id>.json, then <id>.jpg
+                                      |
+                         processing worker polls photos
+                                      |
+                         Hermes image analysis (all tracked objects)
+                                      |
+        missing target -> Hermes MCP lookup -> Postgres earlier sighting
+                                      |
+                  worker validates evidence, saves observations to Postgres
+                                      |
+                   S3 results/<id>_result.json, then _result.jpg
+                                      |
+                         web polls, Gemini Victorian narrator
+                                      |
+                            ElevenLabs TTS -> open browser
 ```
 
-Rules:
-- A detection's zone is the first zone (by `created_at`, then `name`) containing the bottom-centre of its box.
-- An item's `last_*` columns change only when a photo is newer than `last_seen_at`, so photos processed out of order can't move an item back in time. When one photo shows an item twice, the most confident box wins.
-- Each requested target that's tracked but not detected adds 1 to its `lost_count`. Reprocessing a stored `s3_key` changes nothing.
-- Derived (not stored): lost frequency over time (count of `jobs` with `found = false` per target).
+The Pi makes outbound calls only. Web audio comes from the browser; button audio
+comes from the Logitech USB webcam. Both reply through the browser. Gemini words
+the reply; Hermes analyzes images and uses a restricted Postgres history tool.
+The existing web target picker normalizes requests against configured item names;
+plain matches are immediate and its pre-existing Gemini fallback remains for
+phrasing without a direct match. It does not use Hermes for transcription or TTS.
 
-## Interfaces
+## Component ownership
 
-### Pi service
+- `pi/capture.py`: Grove button, voice recorder, serialized camera, S3 queue relay.
+- `pi/voice.py`: hold/release ALSA recording, Ogg encoding, authenticated submission.
+- `desktop/server.py`: polling, error/success completion markers and retry delay.
+- `desktop/hermes.py`: authenticated configurable HTTP adapter, schema validation.
+- `desktop/processing.py`: all-object observations, history verification, DB save,
+  image annotation and versioned results.
+- `desktop/memory_server.py`: read-only MCP lookup subprocess on the Hermes host.
+- `desktop/ctrlf_db/`: SQLAlchemy schema, repository and seed; Alembic owns migrations.
+- `web/lib/data/`: S3 relay/readers, optional Postgres UI reader, narration and voice.
 
-| Method | Path | Purpose |
+## Storage and schemas
+
+Keep using S3 API access so the storage provider remains swappable. Photos remain
+private; rows carry object keys and the web issues signed URLs when displaying
+photos. No model/provider secret is sent to the browser or Pi. Source and annotated
+photos are retained for historical evidence. Raw request audio is transcribed and
+discarded by web; reply audio and in-flight web job state are held in web memory.
+
+Postgres tables:
+
+| Table | Stored facts |
+| --- | --- |
+| `items` | UUID, canonical name, aliases, lost count, last seen time/photo/zone |
+| `photos` | UUID, unique S3 key, optional annotated key, UTC capture time, dimensions, model identifier, optional job UUID |
+| `detections` | Photo/item links, label, nullable confidence, normalized `{x,y,w,h}`, nullable grounded location description, zone, sighting time |
+| `zones` | UUID, name, normalized polygon for fixed camera regions |
+| `jobs` | UUID, processing status, transcript/targets, found verdict, optional reply fields and timestamps |
+| `device_heartbeats` | Device name and last-seen time (existing schema) |
+
+Apply migration `0002` before deploying the matching readers. Existing scored rows
+are unchanged; legacy rows without descriptions use their zone/frame position.
+Unknown confidence is not converted to zero or displayed as a percentage.
+
+Application code owns writes. A photo's detections and item updates are committed
+transactionally before success publication. Reprocessing a unique photo key never
+duplicates sightings or lost counts. On a publication retry, an already persisted
+scene is reused. Only a newer positive sighting moves an item's `last_*` fields;
+absence preserves its previous location. Highest confidence wins when available;
+unscored ties use deterministic geometry. Named zones use the existing
+bottom-center-in-polygon rule. Item identity is a canonical category in v1, not an
+individual owner's wallet or set of keys.
+
+Hermes's MCP helper uses `MEMORY_DATABASE_URL` with a SELECT-only role and read-only
+transactions. Its sole query takes an item UUID and cutoff time and returns the
+newest strictly earlier observation, or `never_seen`, or `unavailable`. The worker
+checks the agent-returned detection ID against the DB's newest earlier evidence.
+Agent conversation/personal memory is not a source of sighting facts.
+
+## S3 result contract
+
+Queue metadata is `{text, targets}`; Pi adds `captured_at` (UTC ISO timestamp)
+before uploading the photo. Existing photos without this use S3 upload time.
+Training-only photos remain under `incoming/training/` and are not processed.
+
+Version 2 success JSON retains legacy `status`, `target`, `matches`, `items`,
+`detections`, `known`, `width`, and `height`. Each detection has `name`, nullable
+`conf`, normalized corner array `box: [x1,y1,x2,y2]`, and `location_description`.
+It adds `version: 2`, `captured_at`, `model`, `persisted: true`, `history_status`,
+and `last_sighting`, also carried per requested item. History status is
+`not_needed`, `available`, `never_seen`, or `unavailable`. Historical evidence
+contains stable detection/item/photo IDs, `seen_at`, label, nullable confidence,
+normalized `{x,y,w,h}`, location description, zone, private S3 keys and dimensions.
+
+Success requires JSON plus the annotated JPEG (JSON published first). A failure
+JSON with `status: failed`, safe `error`, and `persisted: false` is readable without
+a JPEG so web stops polling. Failed photos remain retryable, delayed one minute
+between attempts. Missing provider output, invalid locations, timeout, or DB save
+failure never becomes `not_visible` or a successful remembered result.
+
+## Web API
+
+| Method | Path | Auth / behavior |
 | --- | --- | --- |
-| GET | `/capture` | `image/jpeg` of the current frame (debug and M1) |
-| GET | `/health` | `{ "ok": true }` |
-| (loop) | outbound | Polls `GET {WEB_BASE_URL}/api/jobs/next`, captures, forwards to desktop |
+| POST | `/api/jobs` | UI session if enabled; raw supported audio or JSON `{text}`; returns job |
+| POST | `/api/device/jobs` | Pi bearer token; raw `audio/ogg`, `audio/webm`, or `audio/mp4`; returns job |
+| GET | `/api/jobs/latest?source=device&since=...&afterId=...` | UI; next unpresented job in ascending timestamp/ID order, `{id,createdAt}` or 204 |
+| GET | `/api/jobs/:id` | UI; progress, reply, current/last sighting and explicit history status |
+| GET | `/api/jobs/:id/audio` | UI; in-memory spoken reply |
+| POST | `/api/jobs/:id/correct` | UI; user found/not-found correction |
+| GET | `/api/items` | UI; last seen/lost counts, preferring Postgres with legacy S3 fallback |
+| GET | `/api/items/:id/sightings` | UI; history with signed photo URLs |
+| GET | `/api/status` | UI; camera/worker activity |
 
-### Desktop service
+The discovery route keeps its historical name but returns the oldest outstanding
+job so a busy browser does not skip requests. Cursor is server timestamp plus ID;
+client wall time does not advance it. Discovery runs on Ask independently of input
+mode. Active replies are not interrupted; playback is once per job per browser
+session, with explicit replay and a blocked-autoplay fallback. The last-seen
+answer shows the original historical image and box, location and time.
 
-| Method | Path | Body | Returns |
-| --- | --- | --- | --- |
-| POST | `/detect` | JPEG upload | `{ detections: [{ label, confidence, bbox }] }` (M1) |
-| POST | `/process` | JPEG + `job_id` | `202`; the job row carries the result |
-| POST | `/scan` | none | Capture-free detect and store for periodic mode (M5) |
-| GET | `/health` | none | `{ "ok": true, "gpu": bool, "model_version": "..." }` |
+## Failure and operational limits
 
-### Web (Next.js)
+STT failure produces a no-target request, analysis failure produces a failed job,
+and TTS failure still leaves reply text visible. History query failure is distinct
+from a successful no-history result. A persistence failure is retryable and cannot
+claim memory was saved. Camera failures requeue the same ID. Older late photos
+cannot overwrite a newer last-seen location.
 
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| POST | `/api/jobs` | UI login | Create a job, return presigned audio upload URL |
-| GET | `/api/jobs/next` | Pi bearer token | Pi claims the oldest pending job |
-| GET | `/api/jobs/:id` | UI login | Status, reply text, signed reply-audio URL |
-| GET | `/api/items` | UI login | Items with last seen and lost count |
-| GET | `/api/items/:id/sightings` | UI login | History with signed snapshot URLs |
-
-These are proposals. Change them while building, and update this file in the same commit.
-
-## Model
-
-- Custom-trained YOLO, see `docs/TRAINING.md`. Only trained classes can be found.
-- Weights live in object storage under `models/<version>/best.pt`. `YOLO_WEIGHTS_PATH` selects the version.
-- Matching logic lives in one module in `desktop/`.
-
-## Security
-
-- Snapshots and audio are private (photos and voice from a home). The UI needs a single-user login. All media uses short-lived signed URLs.
-- The Pi token can only claim jobs. The desktop has its own read-write database role. Vercel's role can write `jobs` and read everything else.
-- No credentials in the repo. Env var names are in `docs/TECH_STACK.md`.
-- The desktop and Pi are not exposed to the public internet.
-
-## Failure behavior
-
-- Pi offline: the job stays `pending`; the UI shows "camera offline" after a timeout and the last seen sighting.
-- Desktop offline: the Pi marks the job `failed` after a timeout; the UI still shows history.
-- Untrained item requested: the narrator says it cannot look for that yet.
-- STT or TTS fails: the job completes with `reply_text` only.
-
-## Dev pipeline (branch `dev`, S3 only, everything polls)
-
-The web app skips Postgres (the desktop can write to it, see step 3). One bucket holds jobs, photos and results; the web server does STT, narration and TTS. Nothing calls the web app but the browser. The web app's S3 credentials are narrow: list and read `incoming/` and `results/`, write and delete `jobs/`. No audio is stored.
-
-1. Browser records and `POST /api/jobs` sends the recording as the request body. The web server runs ElevenLabs STT and Gemini item picking, drops the audio, and writes `jobs/<id>.json` (`{"text", "targets"}`).
-2. The Pi (`dev-test/pi_capture.py` on main) polls `jobs/`, deletes the job to claim it, photographs, and uploads `incoming/<id>.json` (a copy of the job) then `incoming/<id>.jpg`.
-3. The processing server (`desktop/server.py`) polls `incoming/`, runs YOLO and writes `results/<id>_result.json` then `results/<id>_result.jpg`. It may touch `results/heartbeat` for the Desktop light. Button-press training photos (`pi/capture.py`) go to `incoming/training/<name>.jpg` instead; the processing server skips that prefix.
-4. The browser polls `GET /api/jobs/<id>`. The web server sees `incoming/<id>.*` (job claimed) and then both result files, has Gemini word the reply from the result JSON, and has ElevenLabs speak it (held in web server memory, served at `/api/jobs/<id>/audio`, with word timings).
-
-Job state lives in web server memory, so a restart forgets jobs in flight. The Items, History and Results screens are derived from the newest 60 `results/*.json` files, so they survive restarts (older results show no question or reply text). Device lights: Camera is the newest `incoming/` upload, Desktop is the newest result or `results/heartbeat`.  Every request, even one that names no known item, goes to the Pi; the processing server reports `no_target` and the narrator asks what to look for.
+This is on-demand capture only: last seen means last photographed. Memory survives
+worker/agent restarts; in-flight voice jobs and reply audio do not survive web
+restart. One Pi/browser is supported; no real-time or multi-camera tracking.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for actual-host installation and acceptance.

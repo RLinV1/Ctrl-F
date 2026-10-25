@@ -1,3 +1,9 @@
+> Reconciliation: `replace-yolo-with-hermes` supersedes this change's active
+> search-path assumptions about YOLO, browser-only audio, optional sighting memory,
+> and device discovery. Keep completed unrelated work and training utilities.
+> Do not archive the superseded search contracts independently; use the current
+> contracts and reconciliation map in `replace-yolo-with-hermes/design.md`.
+
 ## Why
 
 Ctrl-F has detection work in progress (`feat/dev-test`, `feat/backend-foundation`) but no product UI: the only screen is a developer test page. The PRD makes the browser the voice interface, so nothing is usable end to end until `web/` exists to record a request, hand it to the Pi as a job, and show the answer and each item's history.

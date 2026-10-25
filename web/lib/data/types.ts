@@ -6,7 +6,8 @@ export type Sighting = {
   id: string;
   seenAt: string;
   label: string;
-  confidence: number;
+  confidence: number | null;
+  locationDescription?: string | null;
   box: Box;
   zone: string | null;
   snapshot: Snapshot;
@@ -37,6 +38,7 @@ export type JobView = {
   photo: (Snapshot & { seenAt: string }) | null;
   match: Sighting | null;
   lastSighting: Sighting | null;
+  historyStatus?: "available" | "never_seen" | "unavailable" | "not_needed";
   error: string | null;
 };
 
