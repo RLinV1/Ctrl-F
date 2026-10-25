@@ -72,18 +72,22 @@ unscored ties use deterministic geometry. Named zones use the existing
 bottom-center-in-polygon rule. Item identity is a canonical category in v1, not an
 individual owner's wallet or set of keys.
 
-The desktop worker queries Postgres locally by canonical item UUID and current
-photo capture-time cutoff. At most one newest strictly earlier sighting is sent
-through the configured HTTPS chat endpoint, with a 16 KiB limit and an explicit
-field allowlist. Hermes sees no database credentials and needs no direct database
-access or MCP helper. Stored descriptions are treated as untrusted data.
+The desktop worker reads each absent target's newest strictly earlier sighting
+from Postgres using its canonical item UUID and photo capture-time cutoff.
+Historical fields come directly from that authoritative row. A successful empty
+lookup means `never_seen`; a query/connection failure means `unavailable`. No
+Hermes recall/acknowledgement call is made. Hermes remains responsible for vision,
+Gemini for narration, and Postgres for durable location memory. Agent conversation
+memory is not a source of sighting facts. Result version 2 remains compatible.
 
-Hermes must acknowledge the supplied status/detection ID. The worker rechecks the
-newest earlier Postgres record after the chat call, then constructs historical
-fields from that stored record. Empty successful lookups yield `never_seen` only
-when acknowledged; DB/query failures, invalid responses, invented IDs and chat
-failures yield `unavailable`. Agent conversation/personal memory is not a source
-of sighting facts. The version-2 result contract below remains unchanged.
+The desktop sleeps one second between completed polls; failed requests retain
+their 60-second backoff. Pi-request transcription overlaps image download,
+decoding and saved-scene preparation in separate threads/sessions. Fresh Hermes
+analysis starts after transcription so it receives the same final descriptive
+targets as before. This preserves target-guided matching; it is not target-free
+parallel STT/vision. Independent preparation and DB-only history remove waiting
+without changing image analysis inputs. Idle polling traffic is approximately
+three times the old frequency; provider/queue time still affects total latency.
 
 ## S3 result contract
 

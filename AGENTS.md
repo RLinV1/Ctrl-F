@@ -26,7 +26,7 @@ We use [OpenSpec](https://github.com/Fission-AI/OpenSpec). Specs live in `opensp
 
 ```
 web/       Next.js (TypeScript) -> Vercel
-desktop/   Python S3 worker: Hermes image analysis, Postgres sightings, annotation; local Postgres history supplied over chat
+desktop/   Python S3 worker: Hermes image analysis, Postgres sightings, annotation; direct local Postgres history lookup
 pi/        Python service on the Raspberry Pi: camera + job relay (Logitech webcam mic for button requests)
 docs/      PRD, architecture, tech stack
 ```
@@ -78,6 +78,6 @@ Steampunk everywhere: web UI (brass, copper, aged paper, gears, gauges, Victoria
 
 The active runtime uses a configured vision-capable Hermes Agent. YOLO training tools remain optional; no weights are required.
 
-Gemini writes Victorian replies. Web and desktop deterministically extract arbitrary item phrases without a fixed allowlist. Hermes handles image analysis and validates worker-supplied history; the worker queries local Postgres. ElevenLabs handles transcription and speech.
+Gemini writes Victorian replies. Web and desktop deterministically extract arbitrary item phrases without a fixed allowlist. Hermes handles image analysis; the worker reads authoritative history directly from local Postgres without a recall LLM call. ElevenLabs handles transcription and speech.
 - On-demand capture only vs periodic background snapshots.
 - Job hand-off: Pi polling `/api/jobs/next` (default) vs exposing the Pi through a tunnel.

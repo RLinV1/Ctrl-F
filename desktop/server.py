@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
@@ -13,7 +14,7 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from hermes import HermesClient, HermesConfig
-from processing import process_photo
+from processing import PreparedPhoto, prepare_photo, process_photo
 from speech import ElevenLabsSTT, prepare_question
 
 log = logging.getLogger(__name__)
@@ -69,15 +70,15 @@ class Worker:
         try:
             if self.transcribe is None:
                 raise RuntimeError("Desktop speech transcription is not configured")
-            audio = self.s3.get_object(Bucket=self.bucket, Key=manifest["audio_key"])["Body"].read(10 * 1024 * 1024 + 1)
-            with self.sessions() as session:
-                transcript, targets = prepare_question(session, uuid.UUID(manifest["id"]),
-                    datetime.fromisoformat(manifest["created_at"]), audio, self.transcribe)
-            image = self.s3.get_object(Bucket=self.bucket, Key=image_key)["Body"].read(20 * 1024 * 1024 + 1)
-            if len(image) > 20 * 1024 * 1024:
-                raise ValueError("Photo exceeds size limit")
+            # Each task owns its S3 response and DB session. Only preparation is
+            # independent: Hermes still receives the final transcribed targets.
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="device-prepare") as executor:
+                question = executor.submit(self.prepare_device_question, manifest)
+                photo = executor.submit(self.prepare_device_photo, manifest)
+                transcript, targets = question.result()
+                image, prepared = photo.result()
             facts, annotated = process_photo(image, image_key, datetime.fromisoformat(manifest["captured_at"]),
-                                             targets, self.agent, self.sessions)
+                                             targets, self.agent, self.sessions, prepared=prepared)
             facts.update(source="device", created_at=manifest["created_at"], transcript=transcript, targets=targets)
             self.s3.put_object(Bucket=self.bucket, Key=stem+".json", Body=json.dumps(facts).encode(), ContentType="application/json")
             self.s3.put_object(Bucket=self.bucket, Key=stem+".jpg", Body=annotated, ContentType="image/jpeg")
@@ -88,6 +89,19 @@ class Worker:
                 "detections": [], "matches": [], "target": None, "persisted": False,
             }).encode(), ContentType="application/json")
             log.warning("Device voice request failed; will retry")
+
+    def prepare_device_question(self, manifest: dict) -> tuple[str, list[str]]:
+        audio = self.s3.get_object(Bucket=self.bucket, Key=manifest["audio_key"])["Body"].read(10 * 1024 * 1024 + 1)
+        with self.sessions() as session:
+            return prepare_question(session, uuid.UUID(manifest["id"]),
+                                    datetime.fromisoformat(manifest["created_at"]), audio, self.transcribe)
+
+    def prepare_device_photo(self, manifest: dict) -> tuple[bytes, PreparedPhoto]:
+        image = self.s3.get_object(Bucket=self.bucket, Key=manifest["image_key"])["Body"].read(20 * 1024 * 1024 + 1)
+        if len(image) > 20 * 1024 * 1024:
+            raise ValueError("Photo exceeds size limit")
+        return image, prepare_photo(image, manifest["image_key"],
+                                    datetime.fromisoformat(manifest["captured_at"]), self.sessions)
 
     def device_assets_ready(self, manifest: dict) -> bool:
         for field, maximum in (("audio_key", 10 * 1024 * 1024), ("image_key", 20 * 1024 * 1024)):
@@ -168,7 +182,7 @@ def main() -> None:
             worker.poll()
         except Exception:
             log.warning("Could not poll storage; retrying")
-        time.sleep(3)
+        time.sleep(1)
 
 
 if __name__ == "__main__":

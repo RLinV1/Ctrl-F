@@ -72,7 +72,7 @@ def test_every_observation_persisted_and_absent_target_uses_verified_memory(monk
     assert annotated.startswith(b"\xff\xd8\xff")
 
 
-def test_invented_history_not_trusted(monkeypatch):
+def test_history_uses_db_without_agent_acknowledgement(monkeypatch):
     sessions = lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")])
     agent = Mock()
     agent.analyze.side_effect = lambda image, photo, *args: Scene(photo, "hermes-agent", ())
@@ -80,7 +80,9 @@ def test_invented_history_not_trusted(monkeypatch):
     monkeypatch.setattr(processing.repo, "lookup_last_sighting", lambda *args: {"detection_id": "real"})
     monkeypatch.setattr(processing.repo, "save_result", Mock())
     facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
-    assert facts["history_status"] == "unavailable" and facts["last_sighting"] is None
+    assert facts["history_status"] == "available"
+    assert facts["last_sighting"] == {"detection_id":"real"}
+    agent.recall.assert_not_called()
 
 
 def test_database_failure_does_not_publish_success(monkeypatch):
@@ -150,23 +152,20 @@ def test_worker_requires_database_before_connecting(monkeypatch):
         main()
 
 
-def test_local_lookup_precedes_chat_and_rechecks_newest_evidence(monkeypatch):
+def test_absent_targets_query_history_once_without_network(monkeypatch):
     sessions = lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")])
-    old = {"detection_id": "old-id"}
-    newer = {"detection_id": "newer-id"}
-    lookup = Mock(side_effect=[old, newer])
+    evidence = {"detection_id":"newest-db-row"}
+    lookup = Mock(return_value=evidence)
     monkeypatch.setattr(processing.repo, "lookup_last_sighting", lookup)
     monkeypatch.setattr(processing.repo, "save_result", Mock())
     agent = Mock()
     agent.analyze.side_effect = lambda image, photo, *args: Scene(photo, "hermes-agent", ())
-    def recall(item, before, supplied):
-        assert lookup.call_count == 1
-        assert supplied == old
-        return {"status": "available", "detection_id": "old-id"}
-    agent.recall.side_effect = recall
+    agent.recall.side_effect = RuntimeError("recall must not be invoked")
     facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
-    assert facts["history_status"] == "unavailable"
-    assert facts["last_sighting"] is None
+    assert facts["history_status"] == "available" and facts["last_sighting"] == evidence
+    assert lookup.call_count == 1
+    assert lookup.call_args.args[1:] == ("keys-id",TAKEN)
+    agent.recall.assert_not_called()
 
 
 @pytest.mark.parametrize("outcome", ["empty", "database-failure", "api-failure"])
@@ -183,6 +182,57 @@ def test_absent_history_outcomes(monkeypatch, outcome):
     if outcome == "api-failure":
         agent.recall.side_effect = RuntimeError("private provider details")
     facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
-    assert facts["history_status"] == ("never_seen" if outcome == "empty" else "unavailable")
-    if outcome == "database-failure":
-        agent.recall.assert_not_called()
+    assert facts["history_status"] == ("unavailable" if outcome == "database-failure" else "never_seen")
+    agent.recall.assert_not_called()
+
+
+def test_worker_polls_again_after_one_second(monkeypatch):
+    import server
+    monkeypatch.setattr(server,"load_dotenv",lambda *args:None)
+    monkeypatch.setenv("HERMES_BASE_URL","http://127.0.0.1:8642/v1")
+    monkeypatch.setenv("HERMES_API_KEY","test")
+    monkeypatch.setenv("DATABASE_URL","configured")
+    monkeypatch.setenv("S3_BUCKET","test")
+    monkeypatch.setattr("boto3.client",Mock())
+    monkeypatch.setattr("ctrlf_db.session.make_engine",Mock())
+    monkeypatch.setattr("ctrlf_db.session.make_session_factory",Mock())
+    worker = Mock()
+    monkeypatch.setattr(server,"Worker",Mock(return_value=worker))
+    sleep = Mock(side_effect=RuntimeError("stop-loop"))
+    monkeypatch.setattr(server.time,"sleep",sleep)
+    with pytest.raises(RuntimeError,match="stop-loop"):
+        server.main()
+    worker.poll.assert_called_once()
+    sleep.assert_called_once_with(1)
+
+
+def test_multiple_missing_items_use_only_db_evidence(monkeypatch):
+    items = [SimpleNamespace(name=name,aliases=[],id=f"{name}-id") for name in ("keys","wallet")]
+    lookup = Mock(side_effect=[{"detection_id":"keys-prior"},None])
+    monkeypatch.setattr(processing.repo,"lookup_last_sighting",lookup)
+    monkeypatch.setattr(processing.repo,"save_result",Mock())
+    agent = Mock()
+    agent.analyze.side_effect = lambda image,photo,*args:Scene(photo,"hermes-agent",())
+    facts,_ = processing.process_photo(jpeg(),"incoming/two-missing.jpg",TAKEN,["keys","wallet"],agent,lambda:Session(items))
+    assert [item["history_status"] for item in facts["items"]] == ["available","never_seen"]
+    assert lookup.call_count == 2
+    agent.recall.assert_not_called()
+
+
+def test_prepared_image_retains_original_vision_input_and_descriptive_target(monkeypatch):
+    items = [SimpleNamespace(name="red water bottle",aliases=[],id="bottle-id")]
+    sessions = lambda:Session(items)
+    image = jpeg()
+    prepared = processing.prepare_photo(image,"incoming/prepared.jpg",TAKEN,sessions)
+    monkeypatch.setattr(processing,"prepare_photo",Mock(side_effect=AssertionError("Image should not be prepared twice")))
+    agent = Mock()
+    def analyze(received,photo,catalog,targets):
+        assert received == image
+        assert targets == ["red water bottle"]
+        assert (photo.width,photo.height) == (100,80)
+        return Scene(photo,"hermes-agent",(Observation("red water bottle",{"x":.1,"y":.2,"w":.2,"h":.3},"On the desk"),))
+    agent.analyze.side_effect = analyze
+    monkeypatch.setattr(processing.repo,"save_result",Mock())
+    facts,_ = processing.process_photo(image,"incoming/prepared.jpg",TAKEN,["red water bottle"],agent,sessions,prepared=prepared)
+    assert facts["status"] == "found" and facts["target"] == "red water bottle"
+    agent.analyze.assert_called_once()

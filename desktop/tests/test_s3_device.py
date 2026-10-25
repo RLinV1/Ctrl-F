@@ -37,6 +37,7 @@ def test_ready_assets_transcribed_and_source_published(monkeypatch):
     transcribe = Mock(return_value="Where are my keys?")
     prepared = Mock(return_value=("Where are my keys?", ["keys"]))
     monkeypatch.setattr("server.prepare_question",prepared)
+    monkeypatch.setattr("server.prepare_photo",Mock())
     processed = Mock(return_value=({"version":2,"status":"found","persisted":True},b"annotated"))
     monkeypatch.setattr("server.process_photo",processed)
     worker = Worker(s3,"test",Mock(),sessions,transcribe)
@@ -76,6 +77,7 @@ def test_stt_failure_publishes_safe_device_error(monkeypatch):
     request = manifest()
     s3 = setup(request)
     monkeypatch.setattr("server.prepare_question",Mock(side_effect=RuntimeError("private-key")))
+    monkeypatch.setattr("server.prepare_photo",Mock())
     processing = Mock()
     monkeypatch.setattr("server.process_photo",processing)
     Worker(s3,"test",Mock(),MagicMock(),Mock()).poll()
@@ -92,3 +94,49 @@ def test_untrusted_manifest_cannot_select_arbitrary_assets(field,value):
     request[field] = value
     with pytest.raises(ValueError):
         validate_device_manifest(f"incoming/device/{request['id']}.ready.json",request)
+
+
+def test_transcription_overlaps_preparation_but_vision_keeps_descriptive_targets(monkeypatch):
+    from threading import Event, get_ident
+    from .test_server_db import Session
+    import processing
+    request = manifest()
+    s3 = setup(request)
+    speech_started, image_started = Event(), Event()
+    sessions_used = []
+    def sessions():
+        session = Session([])
+        sessions_used.append((session,get_ident()))
+        return session
+    def question(*args):
+        speech_started.set()
+        assert image_started.wait(2), "Image preparation did not overlap speech"
+        return "Find my red water bottle",["red water bottle"]
+    real_prepare = processing.prepare_photo
+    def prepare(*args):
+        image_started.set()
+        assert speech_started.wait(2), "Speech did not overlap image preparation"
+        return real_prepare(*args)
+    processed = Mock(return_value=({"status":"found","persisted":True},b"annotated"))
+    monkeypatch.setattr("server.prepare_question",question)
+    monkeypatch.setattr("server.prepare_photo",prepare)
+    monkeypatch.setattr("server.process_photo",processed)
+    Worker(s3,"test",Mock(),sessions,Mock()).poll()
+    assert processed.call_args.args[3] == ["red water bottle"]
+    assert processed.call_args.kwargs["prepared"].photo.key == request["image_key"]
+    assert len({id(session) for session,_ in sessions_used}) == 2
+    assert len({thread for _,thread in sessions_used}) == 2
+
+
+def test_image_preparation_failure_does_not_run_vision_or_publish_success(monkeypatch):
+    request = manifest()
+    s3 = setup(request)
+    monkeypatch.setattr("server.prepare_question",Mock(return_value=("Find keys",["keys"])))
+    monkeypatch.setattr("server.prepare_photo",Mock(side_effect=RuntimeError("private-image-details")))
+    process = Mock()
+    monkeypatch.setattr("server.process_photo",process)
+    Worker(s3,"test",Mock(),MagicMock(),Mock()).poll()
+    facts = json.loads(s3.objects[f"results/{request['id']}_result.json"])
+    assert facts["status"] == "failed" and not facts["persisted"]
+    assert "private-image-details" not in str(facts)
+    process.assert_not_called()
