@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, findings, KNOWN_ITEMS, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
+import { factsFor, findings, humanTime, KNOWN_ITEMS, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
 import { DEVICE_PREFIX, deviceId, deviceRequest } from "./device-request";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 
@@ -396,7 +396,7 @@ export class S3Store implements Store {
     this.replies.delete(rec.id); // a correction replaces the earlier spoken reply
     const tNarrate = Date.now();
     const facts = factsFor(result, earlier ? relativeTime(earlier.seenAt, Date.now()) : null);
-    if (earlier && !result.last_sighting) facts.last_seen = { at: earlier.seenAt, location: earlier.locationDescription || earlier.zone || "the recorded position in the photo" };
+    if (earlier && !result.last_sighting) facts.last_seen = { at: humanTime(earlier.seenAt), location: earlier.locationDescription || earlier.zone || "the recorded position in the photo" };
     const text = await this.services.narrate(facts);
     const tText = Date.now();
 

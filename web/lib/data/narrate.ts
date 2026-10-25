@@ -39,7 +39,7 @@ Rules:
 - Preserve object qualifiers exactly: an AirPods case is not an AirPod or proof of visible earbuds. Never shorten a case/container label to its contents. "Not visible" means unconfirmed in this photo, not nowhere to be found.
 - Say plainly whether the item was found. If found, give where it is in the frame using the "where" field, and mention "next_to" if present.
 - If status is "found" and there is no "where" field, the user has confirmed it is in the photo: say you take their word for it, and give no place.
-- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen" is present, say its stored location and time, clearly as a past sighting. If "history_status" is "unavailable", say history cannot currently be checked; do not say never seen. If only "last_seen_ago" is present, say how long ago it was last seen. If "never_seen_before" is true, say the camera has never seen it. Never state or guess a time or place that is not in the JSON.
+- If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen" is present, say its stored location and time, clearly as a past sighting. Say the time exactly as written in "at" (already Eastern time); never output an ISO timestamp. If "history_status" is "unavailable", say history cannot currently be checked; do not say never seen. If only "last_seen_ago" is present, say how long ago it was last seen. If "never_seen_before" is true, say the camera has never seen it. Never state or guess a time or place that is not in the JSON.
 - If status is "unsupported", say you cannot yet seek that item.
 - If status is "no_target", ask what they are looking for.
 - Always use the item's plain name (for example "phone", not a nickname). Never offer actions you cannot do, such as fetching or retrieving it.
@@ -109,9 +109,16 @@ export function factsFor(result: Result, lastSeen?: string | null) {
   return facts;
 }
 
+/** "October 25, 2026 at 2:39 AM EDT": Eastern time, with EST or EDT as it applies on that date. */
+export function humanTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" }).format(date);
+}
+
 function historyFacts(status?: HistoryStatus, sighting?: HistoryEvidence | null) {
   if (status === "available" && sighting) return { history_status: status,
-    last_seen: { at: sighting.seen_at, location: sighting.location_description || sighting.zone || "the recorded position in the photo" } };
+    last_seen: { at: humanTime(sighting.seen_at), location: sighting.location_description || sighting.zone || "the recorded position in the photo" } };
   if (status === "never_seen") return { history_status: status, never_seen_before: true };
   return status === "unavailable" ? { history_status: status } : {};
 }
