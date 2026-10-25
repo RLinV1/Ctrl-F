@@ -7,7 +7,7 @@ Keeps durable object sightings and their photo evidence so later searches can ex
 ## ADDED Requirements
 
 ### Requirement: Persist each successful scene
-The system SHALL persist every accepted tracked-object observation and its photo reference in Postgres, including incidental objects. Stored sightings SHALL include capture time, bounding box, and location description. Reprocessing the same photo SHALL NOT duplicate sightings or lost-count changes.
+The system SHALL register new requested/observed categories and persist every accepted object observation and its photo reference in Postgres, including incidental objects. Stored sightings SHALL include capture time, bounding box, and location description. Reprocessing the same photo SHALL NOT duplicate sightings or lost-count changes.
 
 #### Scenario: Retry after processing
 - **WHEN** a successfully stored photo is processed again

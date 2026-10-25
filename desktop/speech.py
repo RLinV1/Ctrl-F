@@ -1,6 +1,5 @@
 """ElevenLabs transcription for S3-only Pi voice requests."""
 
-import re
 from collections.abc import Mapping, Sequence
 
 import httpx
@@ -40,22 +39,9 @@ class ElevenLabsSTT:
 
 
 def match_targets(transcript: str, catalog: Mapping[str, Sequence[str]]) -> list[str]:
-    """Match canonical item/alias phrases, suppressing shorter overlapping matches."""
-    hits = []
-    for name, aliases in catalog.items():
-        for alias in [name, *aliases]:
-            words = re.findall(r"\w+", alias.lower())
-            if not words:
-                continue
-            phrase = r"\W+".join(re.escape(word) for word in words)
-            for match in re.finditer(r"(?<!\w)" + phrase + r"s?(?!\w)", transcript.lower()):
-                hits.append((match.start(), match.end(), name))
-    hits.sort(key=lambda h: (-(h[1]-h[0]), h[0], h[2]))
-    kept = []
-    for hit in hits:
-        if not any(hit[0] < other[1] and hit[1] > other[0] for other in kept):
-            kept.append(hit)
-    return list(dict.fromkeys(hit[2] for hit in sorted(kept)))
+    """Keep arbitrary phrases while resolving existing exact names and aliases."""
+    from targets import extract_targets
+    return extract_targets(transcript, catalog)
 
 
 def prepare_question(session, identifier, created_at, audio: bytes, transcribe) -> tuple[str, list[str]]:

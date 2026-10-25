@@ -44,6 +44,15 @@ class Saved:
     created: bool  # False when this S3 key was stored before (nothing else changed)
 
 
+def ensure_items(session: Session, names: Sequence[str]) -> None:
+    """Register normalized categories without overwriting aliases or existing history."""
+    from targets import item_name
+    normalized = sorted({item_name(name) for name in names})
+    if normalized:
+        session.execute(insert(Item).values([{"name": name} for name in normalized])
+                        .on_conflict_do_nothing(index_elements=[Item.name]))
+
+
 def save_result(
     session: Session,
     *,

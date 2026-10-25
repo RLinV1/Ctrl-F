@@ -8,7 +8,8 @@ from sqlalchemy import select
 
 from ctrlf_db import repo
 from ctrlf_db.models import Item, Photo, Detection
-from hermes import HermesError, PhotoContext, Observation, Scene
+from hermes import PhotoContext, Observation, Scene
+from targets import item_name, MAX_TARGETS
 
 
 def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str], agent, sessions) -> tuple[dict, bytes]:
@@ -24,10 +25,10 @@ def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str]
         items = session.scalars(select(Item).order_by(Item.name)).all()
         catalog = {i.name: list(i.aliases) for i in items}
         ids = {i.name: i.id for i in items}
-    if not catalog:
-        raise HermesError("No tracked items configured; seed the items table first")
     aliases = {alias.lower(): name for name, names in catalog.items() for alias in [name, *names]}
-    targets = list(dict.fromkeys(aliases[t.lower()] for t in targets if t.lower() in aliases))
+    if len(targets) > MAX_TARGETS:
+        raise ValueError("Too many requested items")
+    targets = list(dict.fromkeys(aliases.get(item_name(t), item_name(t)) for t in targets))
     # A DB commit can succeed before S3 publication fails. Rebuild that exact
     # persisted scene on retry, instead of publishing a different agent answer.
     with sessions() as session:
@@ -43,6 +44,14 @@ def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str]
             scene = None
     if scene is None:
         scene = agent.analyze(image, photo, catalog, targets)
+    # Register only bounded requested/validated observed categories, then load IDs
+    # before history lookup. Exact aliases remain attached to their original item.
+    with sessions() as session:
+        with session.begin():
+            repo.ensure_items(session, [*targets, *(o.item for o in scene.observations)])
+        items = session.scalars(select(Item).order_by(Item.name)).all()
+        catalog = {i.name: list(i.aliases) for i in items}
+        ids = {i.name: i.id for i in items}
     detections = []
     draw = ImageDraw.Draw(annotated)
     for obs in scene.observations:

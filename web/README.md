@@ -87,3 +87,10 @@ ElevenLabs TTS remain on web. Browser recordings still use web STT and S3 jobs/.
 A fresh browser session discovers retained device history; its session cursor
 prevents replay in that session. Configure desired private audio/history retention
 operationally; this deployment does not delete stored recordings automatically.
+
+
+Requests accept arbitrary item phrases such as “Where is my bottle?” and mixed
+requests such as “bottle and keys”; the known item list is not an allowlist.
+Common English find/where requests and direct names support up to eight targets
+of 80 characters each. Descriptions are preserved. Deploy matching web/desktop
+code; the Pi protocol is unchanged. Rollback: `docs/ROLLBACK.md`.

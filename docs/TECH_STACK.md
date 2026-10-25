@@ -16,7 +16,7 @@ Status column: **Decided** = user stated it. **Default** = our recommendation, c
 | Pi transport | S3 only | Decided | Pi audio/photo ready manifests; no web URL/token. Browser requests retain jobs/ capture relay. |
 | Pi <-> processing worker | Private S3 `jobs/`, `incoming/`, `results/` relay | Decided | Retains the actual dev transport; no inbound Pi/worker calls. |
 | Audio in/out | Browser microphone or Logitech webcam mic; browser playback | Decided | Hold the Pi button for webcam audio or use browser `MediaRecorder`. `getUserMedia` works on `http://localhost`. Opening the site from another device needs HTTPS. |
-| LLM | Google Gemini | Decided | Victorian narration; existing web target-picking fallback remains. Image analysis/memory use Hermes. |
+| LLM | Google Gemini | Decided | Victorian narration only. Bounded deterministic item parsing on web/desktop; image analysis/memory use Hermes. |
 | Voice | ElevenLabs (STT and TTS) | Decided | Cloud API; needs internet and an API key. |
 | Object detection | Vision-capable Hermes Agent over authenticated HTTP | Decided | User-approved transition; endpoint from `.env`, strict observations and Postgres history tools. |
 | Web testing | Playwright (`@playwright/test`) | Decided | All website tests. External APIs are mocked. |

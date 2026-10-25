@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
-import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
+import { factsFor, findings, KNOWN_ITEMS, narrate, pickTargets, type Detection, type HistoryEvidence, speak, transcribe, type Result, where } from "./narrate";
 import { DEVICE_PREFIX, deviceId, deviceRequest } from "./device-request";
 import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 
@@ -270,13 +270,7 @@ export class S3Store implements Store {
     const tStt = Date.now();
     const known = await this.knownItems();
     // Resolve targets before queueing so the worker can query memory for each missing item.
-    let targets = namedItems(transcript, known);
-    let unsupported: string | null = null;
-    if (!targets.length && transcript.trim()) {
-      const picked = await this.services.pickTargets(transcript, known);
-      targets = picked.targets;
-      unsupported = picked.unsupported;
-    }
+    const { targets, unsupported } = await this.services.pickTargets(transcript, known);
     const rec: JobRec = {
       id: randomUUID(),
       source,

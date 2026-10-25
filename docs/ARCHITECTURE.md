@@ -24,9 +24,9 @@ Pi button -> local Ogg recording + fresh JPEG -> S3 audio + photo + ready manife
 Pi makes S3 calls only; it needs no web URL/token. Browser recordings retain the
 existing web transcription and S3 jobs/ path. Physical-button recordings are
 transcribed on desktop. Both paths use the same Hermes, memory and browser reply
-experience. Gemini still narrates (with the retained web target-picker fallback);
+experience. Gemini narrates; deterministic target parsing supports arbitrary item phrases;
 Hermes does image analysis and restricted memory lookup, not speech transcription.
-Pi targets are matched against Postgres canonical names/aliases after STT.
+Both paths extract bounded object phrases after STT, resolving exact existing names/aliases without restricting requests to the catalog.
 
 ## Component ownership
 
@@ -157,3 +157,24 @@ This is on-demand capture only: last seen means last photographed. Memory surviv
 worker/agent restarts; browser-origin in-flight jobs and reply audio do not survive web restart;
 Pi-origin requests can be reconstructed from their S3 manifests/results. One Pi/browser is supported; no real-time or multi-camera tracking.
 See [DEPLOYMENT.md](DEPLOYMENT.md) for actual-host installation and acceptance.
+
+
+## Arbitrary item categories
+
+Web and desktop parse common English find/where requests and direct item phrases
+without a catalog allowlist. Up to eight distinct targets of 80 normalized
+characters each are accepted from transcripts of up to 1,000 characters. Mixed
+requests such as “bottle and keys” retain both targets. Descriptive phrases such
+as “blue bottle” are retained. Exact existing aliases resolve to canonical names.
+Gemini remains the narrator; neither path needs an extra parsing API call.
+
+Hermes inspects visible physical objects beyond the catalog, uses exact requested
+labels for matching objects, and must respect descriptive attributes. Scene
+metadata, at most 200 observations, valid boxes, descriptions and optional scores
+are still validated. Accepted new requested/observed categories are inserted
+conflict-safely into `items` before history lookup and sighting persistence. No
+schema migration is required. Retries reuse persisted detections. Memory identity
+is a normalized category/description, not a verified individual object; unknown
+synonyms can remain separate categories. Existing aliases remain authoritative.
+
+See `docs/ROLLBACK.md` for the pre-change checkpoint and rollback steps.

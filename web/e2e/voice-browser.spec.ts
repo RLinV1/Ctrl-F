@@ -136,3 +136,25 @@ test("a Pi result uploaded before web opened is still presented", async ({page})
   await expect(page.getByTestId("answer")).toContainText("Where are my keys?");
   await expect(page.getByTestId("answer")).toContainText("last seen on the desk");
 });
+
+
+test("new bottle category displays current location and offers spoken reply", async ({page}) => {
+  const job = answer("new-bottle-job");
+  job.transcript = "Where is my bottle?";
+  job.target = "bottle"; job.itemId = "bottle"; job.found = true;
+  job.replyText = "Your bottle is on the desk beside the notebook.";
+  job.match = {...job.lastSighting!,id:"bottle-sighting",label:"bottle",seenAt:job.createdAt,
+    locationDescription:"On the desk beside the notebook",snapshot:{id:"fresh",url:"/fresh.jpg",width:1280,height:720}};
+  job.lastSighting = null; job.historyStatus = "not_needed";
+  await mock(page,job,false);
+  await page.goto("/");
+  await page.getByPlaceholder("Where are my keys?").fill(job.transcript);
+  await page.getByRole("button",{name:"Send question"}).click();
+  await expect(page.getByTestId("answer")).toContainText("Your bottle is on the desk");
+  await expect(page.getByRole("button",{name:"Play the reply"})).toBeVisible();
+  await page.getByRole("button",{name:"Play the reply"}).click();
+  await expect(page.getByText("Press play to hear the answer.")).toBeVisible();
+  await page.getByRole("button",{name:"Show the camera's photo"}).click();
+  await expect(page.getByTestId("found-caption")).toContainText("beside the notebook");
+  await expect(page.getByAltText("Camera photo with the bottle circled")).toHaveAttribute("src","/fresh.jpg");
+});

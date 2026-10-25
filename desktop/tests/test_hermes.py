@@ -87,7 +87,7 @@ def test_empty_scene_is_explicit_success():
     lambda s: s.pop("observations"),
     lambda s: s.update(status="partial"),
     lambda s: s["photo"].update(width=99),
-    lambda s: s["observations"][0].update(item="unknown"),
+    lambda s: s["observations"][0].update(item="x" * 81),
     lambda s: s["observations"][0].update(location_description=""),
     lambda s: s["observations"][0].update(location_description="x" * 501),
     lambda s: s["observations"][0].update(confidence=True),
@@ -246,3 +246,8 @@ def test_history_transport_and_json_failures_are_redacted(mode):
     with pytest.raises(HermesError) as exc:
         client(handler).recall(ITEM_ID, PHOTO.taken_at, evidence())
     assert CONFIG.api_key not in str(exc.value)
+
+
+def test_open_observations_accept_unconfigured_items_and_empty_catalog():
+    accepted = validate_scene(scene([observation("Blue Bottle"), observation("notebook")]), PHOTO, {}, "hermes-agent")
+    assert [o.item for o in accepted.observations] == ["blue bottle", "notebook"]

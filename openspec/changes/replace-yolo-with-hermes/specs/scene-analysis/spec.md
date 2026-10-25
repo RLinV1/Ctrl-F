@@ -6,18 +6,18 @@ Produces evidence-backed observations from each search photo so Ctrl-F can locat
 
 ## ADDED Requirements
 
-### Requirement: Analyze all tracked objects
-The system SHALL use Hermes image analysis to examine each fresh search photo for every configured tracked item, independently of which item was requested. The active search pipeline SHALL NOT require YOLO weights.
+### Requirement: Analyze all visible physical objects
+The system SHALL use Hermes image analysis to examine each fresh search photo for requested and incidental visible physical objects, without restricting names to a configured catalog. The active search pipeline SHALL NOT require YOLO weights.
 
 #### Scenario: Incidental wallet sighting
 - **WHEN** the user asks for keys and the photo also shows a tracked wallet
 - **THEN** the result includes observations for both visible items
 
 ### Requirement: Grounded structured observations
-Every accepted observation SHALL identify a canonical tracked item, a normalized bounding box, and a concise location description grounded in the image. The result SHALL identify its photo, capture time, image dimensions, and analysis model. Invalid observations SHALL NOT update location memory.
+Every accepted observation SHALL identify a bounded normalized object name (resolving existing canonical aliases), a normalized bounding box, and a concise location description grounded in the image. The result SHALL identify its photo, capture time, image dimensions, and analysis model. Invalid observations SHALL NOT update location memory.
 
 #### Scenario: Invalid coordinates
-- **WHEN** an analysis response includes a box outside the image or an unknown item identifier
+- **WHEN** an analysis response includes a box outside the image or an invalid or overlong object name
 - **THEN** validation rejects that response and no observations from it are persisted
 
 ### Requirement: Distinguish missing from failed analysis
