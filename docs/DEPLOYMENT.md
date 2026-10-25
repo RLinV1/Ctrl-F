@@ -241,3 +241,24 @@ targeted lint and strict OpenSpec passed. Worker active/running, zero automatic
 restarts, env unchanged; local web HTTP 200. Private previous HEAD/config:
 `~/.local/state/ctrlf-conversational-targets/verification/` on the desktop. Existing
 rollback checkpoints remain. The Pi and schema need no changes.
+
+
+## Worker latency feature preview
+
+Feature branch `feat/raw-photo-target-overlay` (PR #37) now includes source
+`de836ee`: one-second post-pass polling, direct authoritative Postgres history
+without recall LLM calls, and concurrent Pi transcription/image preparation.
+Fresh Hermes vision still waits for final descriptive targets to preserve
+matching accuracy. Target-free parallel STT/vision was excluded at the user's
+accuracy requirement. Idle S3 polling traffic increases approximately threefold.
+
+173 isolated-Postgres desktop tests, 124 Playwright tests and 27 web unit tests
+passed. Concurrency/error/retry/target-input and direct-history checks passed.
+The actual desktop runs this feature branch with its existing flock-protected
+service active, zero automatic restarts and unchanged env. Previous HEAD/branch,
+private env and service configuration are under
+`~/.local/state/ctrlf-worker-latency/verification/`; 46 completed output hashes
+were preserved. Local web preview runs with root env at port 3000 (HTTP 200).
+Dev is deliberately not merged. To roll back this preview, stop the worker,
+switch the desktop checkout to its preserved prior dev branch/revision, and
+restart the same service; no schema/env migration was introduced.
