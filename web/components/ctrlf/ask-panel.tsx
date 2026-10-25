@@ -9,6 +9,7 @@ import { GREETINGS, GREETING_KEY, nextGreetingIndex } from "@/lib/greetings";
 import { useDeviceStatus } from "./device-status";
 import { HoldToTalk, useCameraJobs, useElapsed } from "./ask-inputs";
 import { Stage } from "./stage";
+import { StageFrame } from "./stage-frame";
 
 /** The three ways to ask, picked from the menu inside the prompt. */
 export type AskMode = "speak" | "type" | "camera";
@@ -199,6 +200,7 @@ function AskSession() {
   const [mode, setMode] = useState<AskMode>("type");
   // The prompt floats over the stage; minimising it clears the narrator's dialogue.
   const [minimized, setMinimized] = useState(false);
+  const [photoShown, setPhotoShown] = useState(false);
   const holdRef = useRef<Promise<boolean> | null>(null);
   const recording = phase.kind === "recording";
   const elapsed = useElapsed(recording);
@@ -373,20 +375,28 @@ function AskSession() {
         } catch { /* explicit reply play remains available */ }
       }}>Enable audio for camera replies</button>}
       <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
-        <Stage
-          answer={answer}
-          onSettled={onSettled}
-          aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
-          key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
-          line={line}
-          working={working}
-        />
+        {/* As wide as the page allows, but short enough that the prompt still fits under it. The frame is
+            outside the keyed Stage so its steam can clear smoothly when an answer replaces the stage. */}
+        <div className="w-full max-w-[calc((100dvh-180px)*16/9)]">
+          {/* Steam still clearing when the full photo comes up is cleared off it at once. */}
+          <StageFrame clearSteam={photoShown} steaming={working}>
+            <Stage
+              answer={answer}
+              onPhotoView={setPhotoShown}
+              onSettled={onSettled}
+              key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
+              line={line}
+              working={working}
+            />
+          </StageFrame>
+          {answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
+        </div>
       </div>
       <div className="sticky bottom-0 mx-auto flex w-full max-w-[420px] flex-col items-center pb-3">
       <button
         aria-expanded={!minimized}
         aria-label={minimized ? "Show the prompt" : "Minimise the prompt"}
-        className="mb-1 flex h-4 w-7 items-center justify-center bg-brass text-ink shadow-sm hover:bg-brass/85 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass"
+        className="vn-button mb-1.5 flex h-4 w-8 items-center justify-center"
         data-testid="prompt-toggle"
         onClick={() => setMinimized((m) => !m)}
         type="button"

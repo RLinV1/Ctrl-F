@@ -9,8 +9,9 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
   drawn with `--keep palette,type`. Chosen over `achromatic-ledger`, which bans brand colour in the chrome and so
   conflicts with the brass primary action. Its move: the greeting is the h1 in a centred 1100px column; figures at
   regular weight on tonal panels.
-- **Shell:** tinted frame, lighter sheet: a 228px sidebar on the paper ground; the page on a sheet inset 8px with a
-  1px edge and no shadow. Phone: a 48px bar with the mark, the name and a menu.
+- **Shell:** tinted frame, lighter sheet: a 228px sidebar in walnut leather (`#3b2716`, the `.leather` class turns
+  its text light) with a 2px brass edge; the page on a sheet inset 8px with a 1px edge and no shadow. Phone: a 48px walnut bar
+  with the mark, the name and a menu.
 - **Face:** the greeting names today's one fact from the data ("The wallet was the last thing seen, 12 min ago on the
   desk"), and the ground is the product's own material: aged paper.
 - **Brand (fixed):** paper `#f1e8d6`, sheet `#fbf7ef`, panel `#f3ecdf`, ink `#1f1a14`, muted `#5f5444`, brass
@@ -23,7 +24,7 @@ How the UI was art-directed, and the checks it passed. The plan and decisions be
 
 | Screen | Question | Biggest thing |
 | --- | --- | --- |
-| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question he speaks his reply in the study; when he finishes, the study fades to reveal the camera photo behind him, then he and the box fade out, leaving the photo with the target circled. The bobbing ▼ (it dips on hover) skips ahead; "▲ Narrator" brings him back. The chat prompt sits at the bottom |
+| Ask (`/`) | Where is it right now? | A visual-novel stage: the narrator in a brass-panelled study with a dialogue box; after a question he speaks his reply in the study; when he finishes, the study fades to reveal the camera photo behind him, then he and the box fade out, leaving the photo with the target circled. The bobbing ▼ (it dips on hover) skips ahead to the photo; a brass ✕ on the photo closes it, back to the narrator in his study. The dialogue box is a walnut panel with a brass border, inner brass rule, dark outline and rivets, under an engraved brass nameplate. The stage is as wide as the page allows (short enough for the prompt to fit under it), in a walnut and brass frame matching the sidebar, with a brass pipe along its top and sides (`stage-frame.tsx`). While a question is worked on, every vent jets vapour into the screen (`steam.tsx`, canvas particles): a hard blast, then a steady stream, down from the top vents and across from the side ones. Each wisp leaves fast and thin, slows, spreads and swirls; within about a second they hide the scene completely. The dialogue box stays readable above it. When the answer arrives the vents stop and the vapour dissipates over about three seconds to reveal it (under reduced motion there are no wisps: a veil fades in and out). The chat prompt sits at the bottom, in the same walnut and brass frame (outline and rivets) around a parchment writing area, with brass send, talk and minimise buttons |
 | Items (`/items`) | What's missing, and where was it last? | The list, newest sighting first, beside the latest photo |
 | History (`/history`) | What was seen lately, and what goes missing most? | Two lists: recently seen, lost most often |
 | Item history (`/items/[id]`) | Where has this been? | The chosen sighting, large |
@@ -39,7 +40,7 @@ Steampunk is the brand, so these break TasteSkill's no-ornament rule on purpose,
   reduced motion (`components/ctrlf/cog-train.tsx`).
 - **The dot-field background:** a field of brass halftone dots behind the frame (Kokonut `dot-field`, with
   `listenOnWindow` and `masked={false}` added) that drifts slowly, ripples under the cursor and rings out where you
-  click empty space. Decoration, not information: the sidebar has a paper backing and panels stay opaque, so it
+  click empty space. Decoration, not information: the sidebar has a solid walnut backing and panels stay opaque, so it
   never sits under text; clicks on controls never trigger it; still under reduced motion. It replaced the halftone
   cogs, which replaced the earlier flow-field.
 

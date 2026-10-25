@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type { Box, JobView, Snapshot } from "@/lib/data/types";
 import { exactTime, percent, placeWords } from "@/lib/format";
@@ -14,8 +14,9 @@ import { SnapshotFrame } from "./snapshot-frame";
  * The Ask page as a visual novel: the narrator stands in a brass-panelled study, and a
  * dialogue box with his name tag speaks for him. When an answer arrives, the camera's
  * photo slides onto the stage behind the box and his reply plays by itself, its words
- * appearing as they are spoken. Clicking the stage lowers the photo to show him; clicking
- * again raises it. Render it with `key={answer.id}` so each answer starts afresh.
+ * appearing as they are spoken. The ▼ shows the camera's photo full size, and its ✕ closes
+ * it again, back to him in his study. Render it with `key={answer.id}` so each answer
+ * starts afresh.
  */
 
 const SPEAKER = "Narrator";
@@ -114,16 +115,16 @@ export function Stage({
   line,
   answer,
   working,
-  aside,
   onSettled,
+  onPhotoView,
 }: {
   /** What the narrator says when there is no answer to read. */
   line: ReactNode;
   answer: JobView | null;
   working: boolean;
-  /** A note under the dialogue, e.g. the camera is offline. */
-  aside?: ReactNode;
   onSettled?: () => void;
+  /** Told whenever the full camera photo is shown or hidden, so steam left over can clear off it. */
+  onPhotoView?: (shown: boolean) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -133,27 +134,30 @@ export function Stage({
   });
   // The answer plays out in three steps: the narrator talks in his study; when he is done the
   // study fades away to reveal the camera's photo behind him; then he and his box fade out,
-  // leaving the photo. The ▼ skips ahead, and "Narrator" brings him back over the photo.
+  // leaving the photo. The ▼ skips ahead to the photo, and the photo's ✕ brings him back.
   const [view, setView] = useState<"talk" | "reveal" | "photo">("talk");
   const photo = photoOf(answer);
   const name = answer?.target ?? "item";
   const { words, shown, current, done, onEnded } = useReveal(answer, audioRef, playing, blocked);
   useEffect(() => { if (done && !blocked) onSettled?.(); }, [done, blocked, onSettled]);
   const autoPlayed = useRef(false);
+  // Once the user clicks ▼ or ✕, the automatic talk-then-photo sequence stands down.
+  const manual = useRef(false);
   const hasVoice = Boolean(answer?.replyAudioUrl);
   const hasPhoto = Boolean(photo);
   useEffect(() => {
     // Once per answer, and not when the browser blocked the voice (the text must stay readable).
-    if (!(hasPhoto && done && !blocked) || autoPlayed.current) return;
+    if (!(hasPhoto && done && !blocked) || autoPlayed.current || manual.current) return;
     autoPlayed.current = true;
-    const reveal = window.setTimeout(() => setView((v) => (v === "talk" ? "reveal" : v)), hasVoice ? 500 : 1500);
-    const leave = window.setTimeout(() => setView((v) => (v === "photo" ? v : "photo")), hasVoice ? 1500 : 2500);
+    const reveal = window.setTimeout(() => { if (!manual.current) setView((v) => (v === "talk" ? "reveal" : v)); }, hasVoice ? 500 : 1500);
+    const leave = window.setTimeout(() => { if (!manual.current) setView("photo"); }, hasVoice ? 1500 : 2500);
     return () => {
       window.clearTimeout(reveal);
       window.clearTimeout(leave);
     };
   }, [hasPhoto, done, blocked, hasVoice]);
   const photoView = Boolean(photo) && view === "photo";
+  useEffect(() => { onPhotoView?.(photoView); }, [photoView, onPhotoView]);
 
   // Play the reply once, as soon as its audio is there (with the text, or a moment after it).
   const audioUrl = answer?.replyAudioUrl;
@@ -214,8 +218,8 @@ export function Stage({
   }
 
   return (
-    <div className="w-full max-w-[1040px]" data-testid="stage">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video">
+    // The frame and its steam sit outside (ask-panel.tsx), so they last from one answer to the next.
+    <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video" data-testid="stage">
         {photo && (
           <div aria-hidden={view === "talk"} className="absolute inset-0" data-shown={photoView || undefined} data-testid="camera-view">
             <figure className="h-full w-full" data-testid={answer?.found ? "found" : "not-found"}>
@@ -260,19 +264,18 @@ export function Stage({
         />
 
         {caption && (!photo || photoView) && (
-          <p className="absolute top-3 left-3 max-w-[80%] bg-ink/85 px-3 py-1.5 text-paper text-sm">{caption}</p>
+          <p className="absolute top-3 left-3 z-20 max-w-[80%] bg-ink/85 px-3 py-1.5 text-paper text-sm">{caption}</p>
         )}
         {photoView && (
+          // Close the photo and go back to the narrator in his study; the ▼ brings the photo back.
           <button
-            className="absolute right-3 bottom-3 flex items-center gap-2 bg-ink/85 px-3 py-1.5 text-paper text-sm hover:bg-ink"
-            data-testid="back"
-            onClick={() => setView("reveal")}
+            aria-label="Close the photo and return to the narrator"
+            className="vn-close absolute top-3 right-3 z-20 flex size-10 items-center justify-center"
+            data-testid="close-photo"
+            onClick={() => { manual.current = true; setView("talk"); }}
             type="button"
           >
-            <svg aria-hidden className="h-2.5 w-3 text-brass" viewBox="0 0 16 12">
-              <polygon fill="currentColor" points="0,12 16,12 8,0" />
-            </svg>
-            Narrator
+            <X aria-hidden className="size-5" strokeWidth={2.5} />
           </button>
         )}
 
@@ -282,18 +285,27 @@ export function Stage({
           aria-live="polite"
           aria-hidden={photoView || undefined}
           className={cn(
-            "absolute inset-x-[3%] bottom-[4%] min-h-[30%] border-brass border-t-2 bg-ink/85 px-5 pt-6 pb-4 text-paper transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
+            "vn-panel absolute inset-x-[3%] bottom-[4%] z-20 min-h-[30%] px-6 pt-7 pb-4 text-paper transition-[opacity,translate] duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-opacity",
             photoView ? "pointer-events-none translate-y-[6%] opacity-0" : "translate-y-0 opacity-100",
           )}
           data-testid={answer ? "answer" : "dialogue"}
         >
-          <span className="absolute -top-4 left-4 bg-brass px-4 py-1 font-heading font-bold text-ink text-lg">{SPEAKER}</span>
+          {/* Brass rivets in the panel's corners. */}
+          {(["top-1.5 left-1.5", "top-1.5 right-1.5", "bottom-1.5 left-1.5", "bottom-1.5 right-1.5"] as const).map((at) => (
+            <span aria-hidden className={cn("vn-rivet absolute", at)} key={at} />
+          ))}
+          {/* The speaker's nameplate: engraved brass, riveted at each end. */}
+          <span className="vn-nameplate absolute -top-5 left-5 flex items-center gap-2.5 px-3 py-1 font-heading font-bold text-ink text-lg tracking-wide">
+            <span aria-hidden className="vn-rivet" />
+            {SPEAKER}
+            <span aria-hidden className="vn-rivet" />
+          </span>
           {answer?.transcript && <p className="mb-1 text-paper/70 text-sm">You asked: “{answer.transcript}”</p>}
           {answer ? (
             <p className="text-[19px] leading-snug sm:text-[22px]">
               {words.map((w, i) => (
                 <span
-                  className={cn(i < shown ? "opacity-100" : "opacity-0", i === current && "text-brass")}
+                  className={cn(i < shown ? "opacity-100" : "opacity-0", i === current && "text-[#e2bf74]")}
                   data-current={i === current || undefined}
                   key={i}
                 >
@@ -313,7 +325,7 @@ export function Stage({
             {answer?.replyAudioUrl && (
               <button
                 aria-label={playing ? "Pause the reply" : "Play the reply"}
-                className="flex size-9 items-center justify-center bg-brass text-ink hover:bg-brass/85"
+                className="vn-button flex size-9 items-center justify-center text-ink"
                 data-testid="reply-play"
                 onClick={toggle}
                 type="button"
@@ -326,9 +338,9 @@ export function Stage({
               // skips ahead to the camera's photo.
               <button
                 aria-label="Show the camera's photo"
-                className="group flex size-9 items-center justify-center text-brass outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                className="group flex size-9 items-center justify-center text-[#e2bf74] outline-none focus-visible:ring-2 focus-visible:ring-[#e2bf74]"
                 data-testid="next"
-                onClick={() => { setView("photo"); onSettled?.(); }}
+                onClick={() => { manual.current = true; setView("photo"); onSettled?.(); }}
                 type="button"
               >
                 <span className="motion-safe:animate-[vn-nudge_1.1s_ease-in-out_infinite] group-hover:[animation-play-state:paused]">
@@ -359,8 +371,6 @@ export function Stage({
             />
           )}
         </section>
-      </div>
-      {aside}
     </div>
   );
 }

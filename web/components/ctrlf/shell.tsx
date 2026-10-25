@@ -51,10 +51,10 @@ function ActiveNavLinks({ onNavigate }: { onNavigate: () => void }) {
 }
 
 /*
- * Shell from the dealt style (tinted frame, white sheet): a 228px sidebar on the
- * paper ground, and the page on a lighter sheet inset 8px from the window's top,
- * right and bottom, with a 1px edge and no shadow. On a phone the frame goes and
- * a 48px bar holds the menu, the name and nothing else.
+ * Shell from the dealt style (tinted frame, white sheet): a 228px sidebar in walnut
+ * leather with a brass edge, and the page on a lighter sheet inset 8px from the window's
+ * top, right and bottom, with a 1px edge and no shadow. On a phone the frame goes and
+ * a 48px walnut bar holds the menu, the name and nothing else.
  */
 export function Shell({ children, signOut }: { children: ReactNode; signOut?: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -94,13 +94,13 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut?: Re
       >
         {null}
       </DotField>
-      <aside className="hidden w-[228px] shrink-0 flex-col bg-paper/85 px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
+      <aside className="leather hidden w-[228px] shrink-0 flex-col border-sidebar-border border-r-2 px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
         {brand}
         {nav}
         {footer}
       </aside>
 
-      <header className="sticky top-0 z-20 flex h-12 items-center justify-between bg-paper/90 px-4 md:hidden">
+      <header className="leather sticky top-0 z-20 flex h-12 items-center justify-between border-sidebar-border border-b-2 px-4 md:hidden">
         {brand}
         <button
           aria-controls="mobile-menu"
@@ -114,7 +114,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut?: Re
         </button>
       </header>
       {open && (
-        <div className="fixed inset-x-0 top-12 bottom-0 z-20 flex flex-col bg-paper px-5 pb-8 md:hidden" id="mobile-menu">
+        <div className="leather fixed inset-x-0 top-12 bottom-0 z-20 flex flex-col px-5 pb-8 md:hidden" id="mobile-menu">
           {nav}
           {footer}
         </div>
