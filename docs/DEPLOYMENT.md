@@ -81,3 +81,14 @@ moves to the photo; they do not interrupt its audio.
 Pi hardware inspection over SSH confirmed Brio 101 capture at 16 kHz mono, Ogg
 encoding, a valid webcam JPEG and GPIO 5 access. Complete physical-button voice
 acceptance still requires the matching desktop and web revisions running.
+
+
+### Actual Pi deployment status
+
+The S3-only revision was deployed over SSH to raymond's Pi. `ctrlf-pi.service`
+is enabled and active as a systemd user service, with lingering enabled and zero
+restarts at verification. It loads `/home/raymond/.ctrlf.env` (backed up privately),
+uses the Brio 101 stable ALSA name and GPIO 5, and has a private local retry spool.
+All 14 Pi tests passed on the device. No web address or token was configured.
+The desktop and web still need the matching S3-only revision before a new button
+recording can complete the full spoken-answer loop.

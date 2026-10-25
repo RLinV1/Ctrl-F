@@ -68,4 +68,13 @@ See `docs/DEPLOYMENT.md`. No real deployment database has been migrated here.
 - [x] 8.2 Add desktop ElevenLabs STT for ready device requests, canonical alias matching and transcript reuse; verify incomplete uploads, STT failures, duplicate/retry handling and result metadata with mocked pytest tests.
 - [x] 8.3 Discover device jobs from S3 and reconstruct after web restart, retaining Gemini/TTS; verify offline uploads, server restart, browser cursor and legacy browser requests using Playwright.
 - [x] 8.4 Update architecture, env/deployment instructions and superseded assumptions; verify strict OpenSpec validation and cross-component protocol fixtures.
-- [ ] 8.5 Deploy the tested revision on the actual Pi without web configuration, verify its service and hardware, and supply the precise desktop/web redeployment handoff; record which live end-to-end checks still await those hosts.
+- [x] 8.5 Deploy the tested revision on the actual Pi without web configuration, verify its service and hardware, and supply the precise desktop/web redeployment handoff; record which live end-to-end checks still await those hosts.
+
+
+S3-only Pi deployment evidence: revision d073208 installed on raymond's Pi;
+14/14 Pi tests passed on Python 3.13 with system GPIO bindings. User service
+`ctrlf-pi.service` is active, enabled, has zero restarts, and lingering is enabled.
+Its EnvironmentFile is `/home/raymond/.ctrlf.env`, preserved with a private backup.
+The Brio 101 microphone, JPEG capture, GPIO 5 and S3 listing checks passed. A real
+physical-button upload and the full spoken response remain live acceptance until
+the matching desktop/web revisions are deployed; task 7.2 stays open.
