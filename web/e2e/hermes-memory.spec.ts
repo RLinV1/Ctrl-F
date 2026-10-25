@@ -30,7 +30,7 @@ function fixture(objects = new Map<string, string>(), transcript = "Where are my
   const store = new S3Store({client, sign: async key => `https://photos.invalid/${key}`, services: {
     transcribe: async () => transcript, narrate: async facts => plainReply(facts),
     speak: async () => ({audio: Buffer.from("mock voice"), timings: []}),
-    pickTargets,
+    pickTargets, remark: async () => null,
   }});
   return {store, objects};
 }
@@ -257,6 +257,7 @@ test("raw camera pixels display with only the requested target circle", async ({
   });
   await page.emulateMedia({reducedMotion:"reduce"});
   await page.goto("/");
+  await expect(page.getByTestId("prompt")).toHaveAttribute("data-live", "true");
   await page.getByPlaceholder("Where are my keys?").fill("Where are my keys?");
   await page.getByRole("button",{name:"Send question"}).click();
   await expect(page.getByTestId("answer")).toContainText("Your keys");

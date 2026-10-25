@@ -60,12 +60,13 @@ const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 const ghostButton = cn(
   "flex h-8 items-center gap-1.5 px-2.5 text-ink/80 text-sm",
-  "hover:bg-panel hover:text-ink data-[state=open]:bg-panel data-[state=open]:text-ink",
+  "hover:bg-[#ead9b5] hover:text-ink data-[state=open]:bg-[#ead9b5] data-[state=open]:text-ink",
   "transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass",
 );
 
-const menuPanel = "origin-(--radix-dropdown-menu-content-transform-origin) border-rule bg-sheet p-1";
+// Ctrl-F: parchment in a brass border, like the prompt it opens from.
+const menuPanel = "vn-parchment origin-(--radix-dropdown-menu-content-transform-origin) border border-[#a8772a] p-1";
 
 function SendButton({ canSend, busy, onSend }: { canSend: boolean; busy: boolean; onSend: () => void }) {
   return (
@@ -77,7 +78,8 @@ function SendButton({ canSend, busy, onSend }: { canSend: boolean; busy: boolean
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass",
         "transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]",
         // Fills in once there is something to send, so it says "ready" before it is pressed.
-        canSend ? "bg-ink text-paper hover:bg-ink/85" : "bg-ink/10 text-ink/35",
+        // Ctrl-F: a brass button once there is something to send; a faint brass outline before.
+        canSend ? "vn-button" : "border border-[#a8772a]/40 bg-[#a8772a]/10 text-ink/35",
       )}
       data-testid="send"
       disabled={!canSend}
@@ -201,8 +203,13 @@ export default function AI_Prompt({
 
   return (
     <div className={cn("w-full", className)} data-live={live || undefined} data-mode={selected.id} data-testid="prompt">
-      <div className="bg-panel p-1">
-        <div className="relative flex flex-col bg-card-row ring-1 ring-rule transition-shadow duration-150 has-[textarea:focus-visible]:ring-brass-ink">
+      {/* Ctrl-F: the narrator's materials. A walnut frame with a brass border, outline and
+          rivets around a parchment writing area, so typed text stays dark ink on light. */}
+      <div className="vn-panel relative p-2.5">
+        {(["top-1 left-1", "top-1 right-1", "bottom-1 left-1", "bottom-1 right-1"] as const).map((at) => (
+          <span aria-hidden className={cn("vn-rivet absolute", at)} key={at} />
+        ))}
+        <div className="vn-parchment relative flex flex-col ring-1 ring-[#a8772a]/70 transition-shadow duration-150 has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-[#e2bf74]">
           {typing ? (
             <>
               <label className="sr-only" htmlFor={textareaId}>

@@ -209,3 +209,11 @@ Postgres readers and last-seen evidence use the exact original `s3_key`. Annotat
 displayed source. Keep originals private and retained for historical display;
 deleted originals cannot be recovered by removing boxes from an annotated JPEG.
 No desktop/Pi update or schema migration is required for this display change.
+
+
+While a fresh photo is being examined, web may expose a short Gemini/ElevenLabs
+waiting remark in `JobView.remark` with text, audio URL and timings. Its audio is
+served from `/api/jobs/<id>/remark` and held in web memory. Remarks are separate
+from final results, contain no claims about image contents, and are discarded
+when the final answer is ready. The final answer takes playback priority. The
+updated stage/frame and vapor transitions retain raw-photo target overlays.

@@ -39,8 +39,9 @@ const NOISE_SCALE = 240;
 const NOISE_SPEED = 0.07;
 // The noise is sampled on every third dot and blended in between.
 const TONE_STEP = 3;
-// The idle drift is slow; a frame every 33ms is plenty for it.
-const IDLE_FRAME_MS = 33;
+// The idle drift is slow. Ctrl-F: redraw it 8 times a second (upstream: 30); the whole
+// window of dots is redrawn each time, and the drift is too slow to see the difference.
+const IDLE_FRAME_MS = 125;
 // The membrane. Each dot is pulled back to its rest point (ANCHOR), towards
 // its four neighbours (COUPLING, which makes a disturbance travel as a wave)
 // and loses speed to DAMPING. Units are per second squared.
@@ -512,7 +513,8 @@ export default function DotField({
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Ctrl-F: capped at 1.5 (upstream: 2); soft decoration, and a quarter fewer pixels to fill.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       size.width = rect.width;
       size.height = rect.height;
       canvas.width = Math.round(size.width * dpr);
@@ -564,7 +566,7 @@ export default function DotField({
         sampleTone(field, noise, time);
         lastTone = now;
       }
-      // The drift alone gets about 30 frames a second; a wake gets every one.
+      // The drift alone gets about 8 frames a second; a wake gets every one.
       if (wasAwake || toneDue) {
         draw(ctx, field, size, wasAwake);
       }

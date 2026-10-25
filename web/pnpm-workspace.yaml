@@ -2,3 +2,7 @@ allowBuilds:
   esbuild: true
   sharp: false
   unrs-resolver: false
+
+overrides:
+  # 7.1.8 was too new for pnpm's minimumReleaseAge check on 2026-10-24.
+  "@asamuzakjp/css-color": 7.1.7

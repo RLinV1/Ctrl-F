@@ -24,3 +24,17 @@ HEAD/branch/private env/service are backed up under
 `~/.local/state/ctrlf-worker-latency/verification/`. All 46 prior completed output
 hashes remained unchanged. Local feature web restarted with root env and HTTP
 200. Dev remains unmerged; PR #37 carries both photo and latency changes.
+
+
+## 3. Integrate latest dev
+- [x] 3.1 Inspect dev frontend/remark/vapor changes and resolve JobView conflict while retaining raw photos and latency changes.
+- [x] 3.2 Run merged desktop/web checks, including new remark/layout coverage, and strict OpenSpec validation.
+- [ ] 3.3 Publish feature merge, merge PR #37 into dev, synchronize desktop/local web and verify clean matching revisions.
+
+Dev integration checks: latest dev through `4f30c4b` contains UI/vapor
+improvements and photo-taken remarks. The JobView conflict retains both remark
+metadata and original-photo semantics. Combined Playwright: 136 passed, two
+intentional platform skips; web unit tests: 32 passed. TypeScript, targeted
+ESLint, both change specs and diff checks passed. Desktop source is unchanged
+from the validated 173-test revision. Browser checks wait for the prompt-ready
+signal before clicking controls to avoid pre-hydration interaction races.
