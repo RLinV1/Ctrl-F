@@ -86,10 +86,20 @@ awaits the matching desktop/web deployments; task 7.2 stays open.
 - [x] 9.1 Back up the server's uncommitted source, tests, service/config and deployment evidence without exposing credentials; retain the backup path in the deployment handoff.
 - [x] 9.2 Port the bounded supplied-history adapter and race-safe local evidence lookup into the current S3 audio worker; verify the combined Python suite and strict OpenSpec validation.
 - [x] 9.3 Run the combined suite against the server's separate disposable Postgres database, preserving application data and completed S3 outputs; record zero-skip DB evidence.
-- [ ] 9.4 Commit/publish the reconciled source and safely update/restart the existing single desktop service; verify the pending Pi request can be transcribed and processed while retaining config, locks and live fixes.
+- [x] 9.4 Commit/publish the reconciled source and safely update/restart the existing single desktop service; verify the pending Pi request can be transcribed and processed while retaining config, locks and live fixes.
 
 Reconciliation verification (2026-10-25 UTC): 127 desktop tests passed with zero
 skips against the isolated server Postgres database. Application counts remained
 unchanged (one photo, zero detections, one job, ten items). Two legacy S3 output
 references were already missing before reconciliation. Private source/config and
 service backups: `~/.local/state/ctrlf-reconcile/20261025T041041Z`.
+
+Desktop rollout completed at `b0b42c6`: both queued Pi ready requests were
+transcribed, processed and persisted; both reported not visible. The first
+physical-button keys request returned `history_status=never_seen`. Final counts:
+three photos, one detection, three jobs, ten items. Across a managed worker
+restart the device result hashes and database counts stayed unchanged. The
+flock-protected user service is active/enabled with zero automatic restarts.
+The existing `.env` was preserved byte-for-byte, and original deployed edits
+are retained on server branch `fix/preserved-desktop-20261025`. This does not
+verify the separately hosted web playback or task 7.2 hardware acceptance.

@@ -176,3 +176,16 @@ deleted by the reconciliation. Original uncommitted source, private env and
 service configuration are backed up under
 `~/.local/state/ctrlf-reconcile/20261025T041041Z` on the desktop. Preserve the
 existing `.venv/worker`, `.env`, Postgres port and flock-protected user service.
+
+The reconciled desktop is deployed from `dev` revision `b0b42c6` (PR #25).
+Original edits are retained on server branch `fix/preserved-desktop-20261025`;
+the root `.env` was preserved byte-for-byte. `ctrlf-worker.service` is active,
+enabled, flock-protected and has zero automatic restarts. Both queued Pi voice
+requests completed with transcripts and persisted results. The physical-button
+request `970a2e6c-6223-42d4-912c-c69d11f27b71` matched keys and returned
+`not_visible` with `history_status=never_seen`; it published an annotated JPEG.
+Final application counts are three photos, one detection, three jobs, ten items.
+A controlled restart left completed device result hashes and counts unchanged.
+Private acceptance evidence is in the backup directory above, including
+`candidate-tests.txt` and `restart-verified.json`. The separate web deployment
+and spoken browser response have not been verified here.
