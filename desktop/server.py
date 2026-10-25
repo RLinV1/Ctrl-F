@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Poll s3://BUCKET/incoming/, run YOLO on each new photo, write results/<id>_result.json (what was found) and then the annotated
-results/<id>_result.jpg. The laptop narrates the json, so the json must land before the jpg."""
+results/<id>_result.jpg. The laptop narrates the json, so the json must land before the jpg.
+When DATABASE_URL is set, each photo and its detections are also stored in Postgres (ctrlf_db)."""
 import json
 import os
 import tempfile
 import time
-from pathlib import Path
+from datetime import datetime
+from pathlib import Path, PurePosixPath
 
 import boto3
 from botocore.exceptions import ClientError
@@ -24,7 +26,16 @@ s3 = boto3.client(
     region_name=os.environ.get("S3_REGION") or "us-east-1",
 )
 # Stock COCO weights until the custom model exists (docs/TRAINING.md).
-model = YOLO(os.environ.get("YOLO_WEIGHTS_PATH") or "yolov8n.pt")
+WEIGHTS = os.environ.get("YOLO_WEIGHTS_PATH") or "yolov8n.pt"
+model = YOLO(WEIGHTS)
+
+# Optional: without DATABASE_URL the server only writes S3, as before.
+db = None
+if os.environ.get("DATABASE_URL"):
+    from ctrlf_db import repo
+    from ctrlf_db.session import make_engine, make_session_factory
+
+    db = make_session_factory(make_engine())
 
 
 def result_name(key: str) -> str:
@@ -44,7 +55,8 @@ def has_result(key: str) -> bool:
 def requested_items(key: str) -> list[str]:
     """The items the user asked for, from incoming/<id>.json (written by the Pi from the laptop's job). Empty when absent."""
     try:
-        body = s3.get_object(Bucket=BUCKET, Key=f"{Path(key).with_suffix('')}.json")["Body"].read()
+        # PurePosixPath: S3 keys use "/" even on Windows, where Path would write "incoming\<id>.json".
+        body = s3.get_object(Bucket=BUCKET, Key=f"{PurePosixPath(key).with_suffix('')}.json")["Body"].read()
         return json.loads(body).get("targets", [])
     except ClientError as e:
         if e.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
@@ -65,7 +77,20 @@ def findings(targets: list[str], detections: list[dict], known: list[str]) -> di
             "items": items, "detections": detections}
 
 
-def process(key: str) -> None:
+def store(key: str, taken_at: datetime, width: int, height: int, targets: list[str], detections: list[dict],
+          annotated_key: str) -> None:
+    """Save the photo, its detections and each item's last location. A database error never stops the S3 flow."""
+    try:
+        with db() as session:
+            repo.save_result(session, s3_key=key, annotated_key=annotated_key, taken_at=taken_at, width=width,
+                             height=height, model_version=Path(WEIGHTS).name, targets=targets,
+                             boxes=[repo.box_from_yolo(d) for d in detections], job_id=repo.job_id_from_key(key))
+    except Exception as e:
+        print(f"db write failed for {key}: {e}", flush=True)
+
+
+def process(key: str, taken_at: datetime) -> None:
+    """`taken_at` is the photo's upload time in S3 until the Pi sends its own capture time."""
     name = Path(key).name
     with tempfile.TemporaryDirectory() as tmp:
         src, out = f"{tmp}/{name}", f"{tmp}/out.jpg"
@@ -74,10 +99,14 @@ def process(key: str) -> None:
         result.save(filename=out)
         detections = [{"name": result.names[int(c)], "conf": round(float(s), 3), "box": [round(v, 4) for v in b]}
                       for c, s, b in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxyn.tolist())]
-        facts = findings(requested_items(key), detections, list(result.names.values()))
+        targets = requested_items(key)
+        facts = findings(targets, detections, list(result.names.values()))
         stem = f"results/{Path(key).stem}_result"
         s3.put_object(Bucket=BUCKET, Key=f"{stem}.json", Body=json.dumps(facts).encode())  # before the jpg: the jpg means "done"
         s3.upload_file(out, BUCKET, f"{stem}.jpg")
+    if db is not None:
+        height, width = result.orig_shape
+        store(key, taken_at, width, height, targets, detections, f"{stem}.jpg")
     print(name, [result.names[int(c)] for c in result.boxes.cls], flush=True)
 
 
@@ -90,7 +119,7 @@ def main() -> None:
                 # one bad file must not stop the loop
                 try:
                     if key.endswith(".jpg") and not has_result(key):
-                        process(key)
+                        process(key, obj["LastModified"])
                 except Exception as e:
                     print(f"failed {key}: {e}", flush=True)
         time.sleep(3)
