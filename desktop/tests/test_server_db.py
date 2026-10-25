@@ -146,3 +146,41 @@ def test_worker_requires_database_before_connecting(monkeypatch):
     from server import main
     with pytest.raises(SystemExit, match="DATABASE_URL"):
         main()
+
+
+def test_local_lookup_precedes_chat_and_rechecks_newest_evidence(monkeypatch):
+    sessions = lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")])
+    old = {"detection_id": "old-id"}
+    newer = {"detection_id": "newer-id"}
+    lookup = Mock(side_effect=[old, newer])
+    monkeypatch.setattr(processing.repo, "lookup_last_sighting", lookup)
+    monkeypatch.setattr(processing.repo, "save_result", Mock())
+    agent = Mock()
+    agent.analyze.side_effect = lambda image, photo, *args: Scene(photo, "hermes-agent", ())
+    def recall(item, before, supplied):
+        assert lookup.call_count == 1
+        assert supplied == old
+        return {"status": "available", "detection_id": "old-id"}
+    agent.recall.side_effect = recall
+    facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
+    assert facts["history_status"] == "unavailable"
+    assert facts["last_sighting"] is None
+
+
+@pytest.mark.parametrize("outcome", ["empty", "database-failure", "api-failure"])
+def test_absent_history_outcomes(monkeypatch, outcome):
+    sessions = lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")])
+    lookup = Mock(return_value=None)
+    if outcome == "database-failure":
+        lookup.side_effect = RuntimeError("private database details")
+    monkeypatch.setattr(processing.repo, "lookup_last_sighting", lookup)
+    monkeypatch.setattr(processing.repo, "save_result", Mock())
+    agent = Mock()
+    agent.analyze.side_effect = lambda image, photo, *args: Scene(photo, "hermes-agent", ())
+    agent.recall.return_value = {"status": "never_seen"}
+    if outcome == "api-failure":
+        agent.recall.side_effect = RuntimeError("private provider details")
+    facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
+    assert facts["history_status"] == ("never_seen" if outcome == "empty" else "unavailable")
+    if outcome == "database-failure":
+        agent.recall.assert_not_called()

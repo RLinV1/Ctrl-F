@@ -58,7 +58,10 @@ def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str]
                   "history_status": "not_needed", "last_sighting": None}
         if not matches:
             try:
-                recalled = agent.recall(str(ids[target]), taken_at)
+                with sessions() as session:
+                    supplied = repo.lookup_last_sighting(session, ids[target], taken_at)
+                recalled = agent.recall(str(ids[target]), taken_at, supplied)
+                # Recheck after the network call in case an older photo arrived meanwhile.
                 with sessions() as session:
                     evidence = repo.lookup_last_sighting(session, ids[target], taken_at)
                 # Agent-supplied evidence must match the authoritative newest DB record.

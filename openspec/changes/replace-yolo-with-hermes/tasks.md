@@ -10,10 +10,10 @@ Each group is a separate reviewable milestone/PR. Keep the current runtime usabl
 
 ## 2. Durable object-location memory
 
-- [ ] 2.1 Add an Alembic migration for location descriptions and nullable confidence; verify upgrade against an existing seeded database and legacy sighting reads using pytest/Postgres fixtures, and update the schema contract in `docs/ARCHITECTURE.md` in the same PR.
-- [ ] 2.2 Extend repository writes for every accepted tracked object, deterministic best-box selection, capture timestamps and retry-safe lost counts; verify incidental sightings, absent objects, duplicate photos and out-of-order photos with pytest.
-- [ ] 2.3 Implement a parameterized earlier-sighting query and expose it as the restricted local Hermes MCP history tool; verify aliases, current-photo exclusion, empty history, unavailable DB and evidence-ID validation with pytest, and document the tool registration/configuration.
-- [ ] 2.4 Require database configuration for memory-enabled processing and distinguish unavailable history/unpersisted results from never seen; verify failure recovery and restart-based last-seen retrieval using database integration tests.
+- [x] 2.1 Add an Alembic migration for location descriptions and nullable confidence; verify upgrade against an existing seeded database and legacy sighting reads using pytest/Postgres fixtures, and update the schema contract in `docs/ARCHITECTURE.md` in the same PR.
+- [x] 2.2 Extend repository writes for every accepted tracked object, deterministic best-box selection, capture timestamps and retry-safe lost counts; verify incidental sightings, absent objects, duplicate photos and out-of-order photos with pytest.
+- [x] 2.3 Query Postgres locally and supply bounded evidence to Hermes over authenticated chat, validate item/cutoff/status/ID and recheck authoritative evidence; verify available, empty, unavailable, contradictory and late-arrival outcomes with mocked and isolated Postgres tests. No remote MCP registration is required.
+- [x] 2.4 Require database configuration for memory-enabled processing and distinguish unavailable history/unpersisted results from never seen; verify failure recovery and restart-based last-seen retrieval using database integration tests.
 
 ## 3. Replace desktop runtime perception
 
@@ -56,8 +56,9 @@ Each group is a separate reviewable milestone/PR. Keep the current runtime usabl
 Per the user's clarification, this workstation is not a runtime deployment target.
 The remaining unchecked tasks have their code/docs in place where applicable but
 retain live acceptance conditions: 1.3 needs the actual Hermes version/provider
-record; 2.1–2.4 need the isolated Postgres migration/repository/restart tests and
-real MCP evidence lookup; 4.3 and 7.2 need Logitech/GPIO and full real-host tests.
+record; 2.1–2.4 now passed against the server’s isolated Postgres, including the local
+supplied-history path; 4.3 passed on the Pi. Task 7.2 still needs the full real-host
+voice-loop and historical-object hardware acceptance.
 Do not mark these done from skipped tests or the API schema-only smoke result.
 See `docs/DEPLOYMENT.md`. No real deployment database has been migrated here.
 
@@ -78,3 +79,17 @@ Its EnvironmentFile is `/home/raymond/.ctrlf.env`, preserved with a private back
 The Brio 101 microphone, JPEG capture, GPIO 5 and S3 listing checks passed. A real physical-button test then uploaded Ogg audio and JPEG successfully, with
 the ready marker last and an empty local spool. The full spoken response still
 awaits the matching desktop/web deployments; task 7.2 stays open.
+
+
+## 9. Reconcile deployed desktop fixes
+
+- [x] 9.1 Back up the server's uncommitted source, tests, service/config and deployment evidence without exposing credentials; retain the backup path in the deployment handoff.
+- [x] 9.2 Port the bounded supplied-history adapter and race-safe local evidence lookup into the current S3 audio worker; verify the combined Python suite and strict OpenSpec validation.
+- [x] 9.3 Run the combined suite against the server's separate disposable Postgres database, preserving application data and completed S3 outputs; record zero-skip DB evidence.
+- [ ] 9.4 Commit/publish the reconciled source and safely update/restart the existing single desktop service; verify the pending Pi request can be transcribed and processed while retaining config, locks and live fixes.
+
+Reconciliation verification (2026-10-25 UTC): 127 desktop tests passed with zero
+skips against the isolated server Postgres database. Application counts remained
+unchanged (one photo, zero detections, one job, ten items). Two legacy S3 output
+references were already missing before reconciliation. Private source/config and
+service backups: `~/.local/state/ctrlf-reconcile/20261025T041041Z`.
