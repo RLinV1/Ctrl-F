@@ -34,10 +34,17 @@ Existing web unit suite also passed (25 tests) with the current frozen lockfile.
 ## 4. Multi-object narration follow-up
 - [x] 4.1 Pull latest dev and inspect the actual AirPods/phone result; verify detected case versus absent earbuds before changing matching.
 - [x] 4.2 Preserve case/container labels, explain visible case versus unconfirmed contents, and make plain fallback answer every target in request order; verify Playwright regression cases including per-target history.
-- [ ] 4.3 Clarify Hermes case/contents instructions and docs; verify Python boundary tests, deploy matching desktop/web revision and retain existing checkpoints.
+- [x] 4.3 Clarify Hermes case/contents instructions and docs; verify Python boundary tests, deploy matching desktop/web revision and retain existing checkpoints.
 
 Multi-object regression checks: 146 desktop tests passed with isolated Postgres
 (zero skips, application counts unchanged), 70 Playwright tests passed across
 desktop/mobile, 25 unit tests passed, TypeScript and targeted lint passed. The
 newly pulled no-replay test now waits for the response before checking its
 route-captured cursor, eliminating a request/handler timing race.
+
+Multi-object fix deployed from `dev` at `3413e5a` (PR #32). Desktop worker is
+active/running with zero automatic restarts and unchanged env. Local web was
+restarted with root env and returns HTTP 200. The no-replay update from PR #31
+is included. Original completed results were inspected read-only; the observed
+AirPods case/phone fixture supplies regression coverage without overwriting the
+historical request or manufacturing a new sighting. Rollback checkpoints remain.

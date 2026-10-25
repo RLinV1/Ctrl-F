@@ -208,3 +208,19 @@ bottle detection. Existing 32 completed output hashes were unchanged.
 
 Rollback checkpoint and verified private Postgres/env backup: `docs/ROLLBACK.md`.
 The feature is not archived pending review and well-lit hardware acceptance.
+
+
+## Multi-object case/contents correction
+
+PR #32 deployed `3413e5a` to desktop and restarted local web with root env. The
+latest `dev` no-Pi-replay fix (PR #31) was pulled before implementation and remains
+included. The actual request `60e611e1-509e-4687-9c70-91ba737b43b7` contained
+phone and AirPods case detections, with AirPods unconfirmed. The narrator now
+keeps the case/contents distinction and uses explicit factual wording for that
+combination. Plain fallback answers every target with independent history.
+Hermes instructions also distinguish visible cases from unseen contents.
+
+Verification: 146 isolated-Postgres desktop tests passed (zero skips, application
+counts unchanged), 70 Playwright tests, 25 web unit tests, TypeScript, targeted
+lint and strict OpenSpec passed. Desktop service is active with zero automatic
+restarts and unchanged env; web HTTP 200. Existing checkpoints remain available.
