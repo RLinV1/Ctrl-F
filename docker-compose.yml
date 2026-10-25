@@ -19,15 +19,5 @@ services:
       timeout: 3s
       retries: 10
 
-  # S3-compatible object storage. Local only: runs without auth.
-  seaweedfs:
-    image: chrislusf/seaweedfs
-    command: server -dir=/data -s3 -s3.port=8333
-    ports:
-      - "8333:8333"
-    volumes:
-      - seaweed:/data
-
 volumes:
   pgdata:
-  seaweed:
