@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factsFor, findings, namedItems, near, wordTimes, where, type Detection } from "./narrate";
+import { factsFor, findings, humanTime, namedItems, near, wordTimes, where, type Detection } from "./narrate";
 
 const det = (name: string, box: [number, number, number, number], conf = 0.9): Detection => ({ name, conf, box });
 
@@ -56,5 +56,15 @@ describe("narration helpers", () => {
       { word: "hi", start: 0, end: 0.2 },
       { word: "yo", start: 0.3, end: 0.5 },
     ]);
+  });
+});
+
+describe("humanTime", () => {
+  it("formats in Eastern time with the zone that applies on that date", () => {
+    expect(humanTime("2026-10-25T06:39:34.678899+00:00")).toBe("October 25, 2026 at 2:39 AM EDT");
+    expect(humanTime("2026-12-25T17:00:00Z")).toBe("December 25, 2026 at 12:00 PM EST");
+  });
+  it("leaves an unparseable value as is", () => {
+    expect(humanTime("not a date")).toBe("not a date");
   });
 });
