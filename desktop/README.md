@@ -18,7 +18,7 @@ python3 -m venv .venv
 
 Fill the root `.env` using `.env.example`. Set `DATABASE_URL`, your private S3
 credentials, and `ELEVENLABS_API_KEY` for Pi recording transcription. Back up an existing DB, then apply the additive migration and seed
-tracked names from the same catalog used by the web app:
+optional initial names/aliases for the catalog used by the web app (new categories are also registered automatically):
 
 ```sh
 cd desktop

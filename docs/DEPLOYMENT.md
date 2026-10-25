@@ -189,3 +189,22 @@ A controlled restart left completed device result hashes and counts unchanged.
 Private acceptance evidence is in the backup directory above, including
 `candidate-tests.txt` and `restart-verified.json`. The separate web deployment
 and spoken browser response have not been verified here.
+
+
+## Arbitrary-item rollout (2026-10-25)
+
+PR #29 deployed `70c8cb1` to the existing processing worker. Web runs locally on
+this computer at port 3000 with the root `.env`; Pi code/protocol is unchanged.
+The managed desktop service is active with zero automatic restarts and unchanged
+env/venv/service configuration. All 145 isolated-Postgres tests and 66 Playwright
+tests passed; TypeScript, targeted lint and 25 web unit tests passed.
+
+A real web request for bottle (`96d33ba7-3c5d-452b-b756-26b46ef4795a`) queued
+through S3, triggered a Pi photo, registered the new category, persisted the
+completed job and produced Gemini narration plus ElevenLabs audio (HTTP 200,
+191,886 bytes). The frame was almost completely black on visual inspection, so
+the result was not visible/never seen; this does not verify a positive real-world
+bottle detection. Existing 32 completed output hashes were unchanged.
+
+Rollback checkpoint and verified private Postgres/env backup: `docs/ROLLBACK.md`.
+The feature is not archived pending review and well-lit hardware acceptance.
