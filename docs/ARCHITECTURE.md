@@ -178,3 +178,11 @@ is a normalized category/description, not a verified individual object; unknown
 synonyms can remain separate categories. Existing aliases remain authoritative.
 
 See `docs/ROLLBACK.md` for the pre-change checkpoint and rollback steps.
+
+
+Multi-target narration keeps request order and each item's independent history.
+Case/container labels remain distinct from contents: a visible AirPods case
+does not confirm visible earbuds. When an absent target has its named case
+visible, web supplies explicit case evidence and uses factual wording that
+names the case and says the contents cannot be confirmed. Other results retain
+Gemini narration; its plain fallback now answers every target.

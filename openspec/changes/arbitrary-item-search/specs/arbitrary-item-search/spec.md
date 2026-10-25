@@ -24,3 +24,11 @@ The rollout SHALL preserve a pushed code checkpoint and a private deployment bac
 #### Scenario: Rollback
 - **WHEN** the checkpoint code is redeployed
 - **THEN** the original catalog-based behavior runs against the compatible existing schema
+
+
+### Requirement: Consistent multi-object replies
+Replies SHALL describe every requested target in request order, preserve case/container qualifiers, and distinguish a visible case from unconfirmed contents. Missing-item history SHALL remain independent per target, including when narration uses its plain fallback.
+
+#### Scenario: Phone beside AirPods case
+- **WHEN** phone and AirPods are requested and only the phone and AirPods case are detected
+- **THEN** the reply identifies the visible case, states the earbuds cannot be confirmed, locates the phone and does not claim the case is missing or its contents are visible

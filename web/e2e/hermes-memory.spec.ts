@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { S3Client, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3Store } from "../lib/data/s3-store";
 import { postDeviceJob, getLatestJob } from "../lib/api/handlers";
-import { factsFor, plainReply, pickTargets, type Result } from "../lib/data/narrate";
+import { factsFor, plainReply, pickTargets, narrate, type Result } from "../lib/data/narrate";
 
 test.beforeEach(() => { process.env.DATABASE_URL = ""; });
 
@@ -149,4 +149,35 @@ test("unconfigured bottle and mixed targets reach S3 and render factual voice re
   expect(done?.replyText).toContain("bottle");
   expect(done?.replyText).toContain("beside the notebook");
   await expect.poll(async () => (await store.getJob(job.id))?.replyAudioUrl).toBe(`/api/jobs/${job.id}/audio`);
+});
+
+
+const caseDetection = {name:"airpods case",conf:null,box:[.449,.51,.583,.719] as [number,number,number,number],location_description:"Just left of the phone"};
+const phoneDetection = {name:"phone",conf:null,box:[.594,.278,.873,.847] as [number,number,number,number],location_description:"On the right-center of the wooden table, screen facing up"};
+const caseResult: Result = {version:2,status:"found",target:"phone",matches:[phoneDetection],detections:[phoneDetection,caseDetection],
+  items:[{item:"airpods",status:"not_visible",matches:[],history_status:"never_seen",last_sighting:null},
+    {item:"phone",status:"found",matches:[phoneDetection],history_status:"not_needed",last_sighting:null}]};
+
+test("AirPods case reference cannot turn into confirmed earbuds in multi-item narration", async () => {
+  const facts = factsFor(caseResult);
+  expect(facts.items).toMatchObject([{item:"airpods",status:"not_visible",visible_related_objects:["airpods case"]},{item:"phone",status:"found"}]);
+  const reply = await narrate(facts);
+  expect(reply).toContain("I can see the airpods case, but cannot confirm the earbuds themselves are visible");
+  expect(reply).toContain("Your phone is On the right-center");
+  expect(reply).toContain("right of the airpods case");
+  expect(reply).not.toContain("nowhere");
+  expect(reply.indexOf("earbuds")).toBeLessThan(reply.indexOf("Your phone"));
+});
+
+test("multi-item plain fallback preserves each target and its independent history", () => {
+  const mixed: Result = {...caseResult,items:[
+    {item:"keys",status:"not_visible",matches:[],history_status:"available",last_sighting:evidence},
+    {item:"phone",status:"found",matches:[phoneDetection],history_status:"not_needed"},
+    {item:"wallet",status:"not_visible",matches:[],history_status:"unavailable"}]};
+  const reply = plainReply(factsFor(mixed));
+  expect(reply).toContain("last seen On the desk beside the red mug");
+  expect(reply).toContain("Your phone");
+  expect(reply).toContain("I cannot see your wallet now, and history cannot currently be checked.");
+  expect(reply.indexOf("keys")).toBeLessThan(reply.indexOf("phone"));
+  expect(reply.indexOf("Your phone")).toBeLessThan(reply.indexOf("wallet"));
 });
