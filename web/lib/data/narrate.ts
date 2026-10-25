@@ -36,6 +36,7 @@ You receive a JSON result from the machine's vision system. Reply to the user in
 Rules:
 - Report only what the JSON says. Never invent items, places, or objects that are not in it.
 - If "items" lists several things, say about each one in the order given, one short clause each.
+- Preserve object qualifiers exactly: an AirPods case is not an AirPod or proof of visible earbuds. Never shorten a case/container label to its contents. "Not visible" means unconfirmed in this photo, not nowhere to be found.
 - Say plainly whether the item was found. If found, give where it is in the frame using the "where" field, and mention "next_to" if present.
 - If status is "found" and there is no "where" field, the user has confirmed it is in the photo: say you take their word for it, and give no place.
 - If status is "not_visible", say it is not in view and suggest checking another spot. If "last_seen" is present, say its stored location and time, clearly as a past sighting. If "history_status" is "unavailable", say history cannot currently be checked; do not say never seen. If only "last_seen_ago" is present, say how long ago it was last seen. If "never_seen_before" is true, say the camera has never seen it. Never state or guess a time or place that is not in the JSON.
@@ -70,6 +71,10 @@ export function near(target: Detection, detections: Detection[]): string | null 
 
 function entry(item: string, status: string, matches: Detection[], detections: Detection[]) {
   const out: Record<string, unknown> = { item, status };
+  if (status === "not_visible") {
+    const related = detections.filter((d) => d.name.toLowerCase() === `${item.toLowerCase()} case`);
+    if (related.length) out.visible_related_objects = [...new Set(related.map((d) => d.name))];
+  }
   if (matches[0]) {
     out.where = matches[0].location_description || where(matches[0].box);
     const rel = near(matches[0], detections);
@@ -146,20 +151,33 @@ async function gemini(body: object): Promise<string> {
 
 /** Plain wording for when Gemini is down or has no key, so a finished search still answers. */
 export function plainReply(facts: Record<string, unknown>): string {
+  if (Array.isArray(facts.items) && facts.items.length) {
+    return facts.items.map((item) => plainReply(item as Record<string, unknown>)).join(" ");
+  }
   const item = facts.item ?? "that";
   if (facts.status === "found") return `Your ${item} ${String(item).endsWith("s") ? "are" : "is"} ${facts.where}${facts.next_to ? `, ${facts.next_to}` : ""}.`;
   if (facts.status === "not_visible") {
+    const related = facts.visible_related_objects as string[] | undefined;
+    const lead = related?.length
+      ? `I can see the ${related.join(" and the ")}, but cannot confirm ${item === "airpods" ? "the earbuds themselves are visible" : `your ${item} ${String(item).endsWith("s") ? "are" : "is"} visible`}.`
+      : `I cannot see your ${item} now.`;
     const prior = facts.last_seen as {at: string; location: string} | undefined;
-    if (prior) return `I cannot see your ${item} now. They were last seen ${prior.location} at ${prior.at}.`;
-    if (facts.history_status === "unavailable") return `I cannot see your ${item} now, and history cannot currently be checked.`;
-    if (facts.never_seen_before) return `I cannot see your ${item} now. The camera has not seen it before.`;
-    return `I cannot see your ${item} just now. Try checking another spot.`;
+    if (prior) return `${lead} They were last seen ${prior.location} at ${prior.at}.`;
+    if (facts.history_status === "unavailable") return `${lead.slice(0, -1)}, and history cannot currently be checked.`;
+    if (facts.never_seen_before) return `${lead} The camera has not seen it before.`;
+    return `${lead} Try checking another spot.`;
   }
   if (facts.status === "unsupported") return `I cannot yet seek the ${item}.`;
   return "What are you looking for?";
 }
 
 export async function narrate(facts: Record<string, unknown>): Promise<string> {
+  // A visible case with unconfirmed contents needs explicit factual wording;
+  // a paraphrase must not turn the reference object into a confirmed target.
+  const entries = Array.isArray(facts.items) ? facts.items : [facts];
+  if (entries.some((entry) => Array.isArray(entry.visible_related_objects) && entry.visible_related_objects.length)) {
+    return plainReply(facts);
+  }
   try {
     const text = await gemini({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },

@@ -251,3 +251,12 @@ def test_history_transport_and_json_failures_are_redacted(mode):
 def test_open_observations_accept_unconfigured_items_and_empty_catalog():
     accepted = validate_scene(scene([observation("Blue Bottle"), observation("notebook")]), PHOTO, {}, "hermes-agent")
     assert [o.item for o in accepted.observations] == ["blue bottle", "notebook"]
+
+
+def test_case_remains_distinct_from_requested_contents():
+    def handler(request):
+        prompt = json.loads(json.loads(request.content)["messages"][0]["content"][0]["text"])
+        assert "cases and containers distinct" in prompt["task"]
+        return httpx.Response(200,json=reply(scene([observation("airpods case"),observation("phone")])))
+    result = client(handler).analyze(JPEG,PHOTO,{"airpods":[],"airpods case":[],"phone":[]},["airpods","phone"])
+    assert [o.item for o in result.observations] == ["airpods case","phone"]

@@ -126,7 +126,7 @@ test("a Pi result uploaded before web opened is not replayed", async ({page}) =>
   const job = answer();
   job.createdAt = "2026-01-01T10:00:00Z";
   await mock(page, job, true);
-  const polled = page.waitForRequest("**/api/jobs/latest?**");
+  const polled = page.waitForResponse("**/api/jobs/latest?**");
   let since = "";
   await page.route("**/api/jobs/latest?**", route => {
     since = new URL(route.request().url()).searchParams.get("since")!;

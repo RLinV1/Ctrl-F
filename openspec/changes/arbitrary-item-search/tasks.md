@@ -29,3 +29,15 @@ Gemini narration and 191,886-byte ElevenLabs audio (HTTP 200). Visual inspection
 showed the actual camera frame was almost black; positive detection awaits a
 well-lit scene. All 32 previously completed output hashes stayed unchanged.
 Existing web unit suite also passed (25 tests) with the current frozen lockfile.
+
+
+## 4. Multi-object narration follow-up
+- [x] 4.1 Pull latest dev and inspect the actual AirPods/phone result; verify detected case versus absent earbuds before changing matching.
+- [x] 4.2 Preserve case/container labels, explain visible case versus unconfirmed contents, and make plain fallback answer every target in request order; verify Playwright regression cases including per-target history.
+- [ ] 4.3 Clarify Hermes case/contents instructions and docs; verify Python boundary tests, deploy matching desktop/web revision and retain existing checkpoints.
+
+Multi-object regression checks: 146 desktop tests passed with isolated Postgres
+(zero skips, application counts unchanged), 70 Playwright tests passed across
+desktop/mobile, 25 unit tests passed, TypeScript and targeted lint passed. The
+newly pulled no-replay test now waits for the response before checking its
+route-captured cursor, eliminating a request/handler timing race.

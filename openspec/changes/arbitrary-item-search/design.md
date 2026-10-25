@@ -17,3 +17,15 @@ Push checkpoint/catalog-only-20261025 at ad8f570 and take a private server pg_du
 
 ## Open Questions
 None blocking; user authorized implementation and rollback checkpoint.
+
+
+## Multi-object narration follow-up
+The recorded AirPods/phone request detected phone and AirPods case while marking
+AirPods not visible. Keep that evidence distinction; a case does not prove its
+contents. Supply explicit visible-related-case facts for absent targets. For
+this ambiguous case/contents combination, use deterministic factual wording
+that names the case and says the requested contents cannot be confirmed. Other
+responses retain Gemini narration. The plain fallback must cover every target
+in request order and preserve each target's independent history status. Hermes
+must keep cases/containers distinct from their contents. No database/schema or
+Pi changes are needed. Regression tests use the observed result structure.
