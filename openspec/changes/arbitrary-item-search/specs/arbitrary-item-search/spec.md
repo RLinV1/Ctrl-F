@@ -32,3 +32,15 @@ Replies SHALL describe every requested target in request order, preserve case/co
 #### Scenario: Phone beside AirPods case
 - **WHEN** phone and AirPods are requested and only the phone and AirPods case are detected
 - **THEN** the reply identifies the visible case, states the earbuds cannot be confirmed, locates the phone and does not claim the case is missing or its contents are visible
+
+
+### Requirement: Conversational request cleanup
+Both request paths SHALL ignore leading conversational greetings, hesitation words and standalone determiners while retaining object descriptions and explicit multi-item requests. Prior junk catalog entries SHALL NOT turn these words into requested objects.
+
+#### Scenario: Greeting and hesitation
+- **WHEN** the user says “Yo, where is my, uh, red water bottle and phone?”
+- **THEN** targets are red water bottle and phone, with no yo, my or uh target
+
+#### Scenario: Meaningful words remain
+- **WHEN** the user asks for a yo-yo, hi hat or plum-colored mug
+- **THEN** those object phrases retain their meaningful words

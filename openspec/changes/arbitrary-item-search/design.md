@@ -29,3 +29,15 @@ responses retain Gemini narration. The plain fallback must cover every target
 in request order and preserve each target's independent history status. Hermes
 must keep cases/containers distinct from their contents. No database/schema or
 Pi changes are needed. Regression tests use the observed result structure.
+
+
+## Conversational parsing correction
+Normalize hesitation words with their surrounding pause punctuation before
+parsing commands and lists. Strip greetings only when preceding a recognized
+request wrapper, preserving item phrases such as yo-yo or hi hat. Strip
+standalone determiners even at a comma boundary and reject standalone request
+noise; never filter object words by a fixed catalog. Preserve descriptors and
+explicit and/or/comma lists. Existing junk catalog entries are ignored by the
+request parser without deleting historical rows. Both implementations use
+shared regression fixtures. No extra LLM call or Pi/schema change is introduced.
+This remains common-English command parsing rather than unrestricted conversation.

@@ -73,3 +73,9 @@ def test_failed_stt_does_not_commit_a_verdict():
 def test_arbitrary_target_phrases(case):
     catalog = {"keys": ["keyring"], "phone": [], "headphones": [], "airpods case": []}
     assert match_targets(case["text"], catalog) == case["targets"]
+
+
+def test_greetings_and_determiners_ignored_even_with_polluted_catalog():
+    catalog = {"yo":[],"my":[],"uh":[],"bottle":[],"keys":["keyring"],"":[]}
+    assert match_targets("Yo, where is my, uh, water bottle and keyring?",catalog) == ["water bottle","keys"]
+    assert match_targets("my, yo, uh",catalog) == []
