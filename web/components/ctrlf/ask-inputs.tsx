@@ -106,7 +106,8 @@ export function useCameraJobs(listening: boolean, onJob: (id: string) => void) {
   useEffect(() => {
     if (!cursor.current) {
       try { cursor.current = JSON.parse(sessionStorage.getItem("ctrlf-device-cursor") || "null"); } catch { /* unavailable */ }
-      cursor.current ||= { since: new Date(0).toISOString(), afterId: "" };
+      // A fresh session starts now: requests made before the page opened are never replayed.
+      cursor.current ||= { since: new Date().toISOString(), afterId: "" };
     }
     if (!listening) return;
     let alive = true;
