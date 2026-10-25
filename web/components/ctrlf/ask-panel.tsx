@@ -367,16 +367,16 @@ function AskSession() {
           working={working}
         />
       </div>
-      <div className="sticky bottom-0 mx-auto flex w-full max-w-[560px] flex-col items-center pb-3">
+      <div className="sticky bottom-0 mx-auto flex w-full max-w-[420px] flex-col items-center pb-3">
       <button
         aria-expanded={!minimized}
         aria-label={minimized ? "Show the prompt" : "Minimise the prompt"}
-        className="mb-1 flex h-7 w-12 items-center justify-center bg-brass text-ink shadow-sm hover:bg-brass/85 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass"
+        className="mb-1 flex h-6 w-10 items-center justify-center bg-brass text-ink shadow-sm hover:bg-brass/85 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass"
         data-testid="prompt-toggle"
         onClick={() => setMinimized((m) => !m)}
         type="button"
       >
-        {minimized ? <ChevronUp aria-hidden className="size-5" /> : <ChevronDown aria-hidden className="size-5" />}
+        {minimized ? <ChevronUp aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
       </button>
       <div className={minimized ? "hidden" : "w-full"}>
       <AI_Prompt
