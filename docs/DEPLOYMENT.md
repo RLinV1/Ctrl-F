@@ -92,3 +92,8 @@ uses the Brio 101 stable ALSA name and GPIO 5, and has a private local retry spo
 All 14 Pi tests passed on the device. No web address or token was configured.
 The desktop and web still need the matching S3-only revision before a new button
 recording can complete the full spoken-answer loop.
+
+A user-held Grove button test on the actual Pi successfully produced one complete
+S3 request: 18,326 bytes of Ogg audio and a 288,137-byte JPEG, followed by its ready
+manifest. The local spool cleared after upload. This verifies the physical
+button/microphone/camera/S3 path, not the downstream spoken response.
