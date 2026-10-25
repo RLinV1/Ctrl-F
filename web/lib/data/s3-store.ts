@@ -3,6 +3,7 @@ import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } fr
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { relativeTime } from "../format";
 import { factsFor, findings, KNOWN_ITEMS, namedItems, narrate, pickTargets, type Detection, speak, transcribe, type Result, where } from "./narrate";
+import { pgEnabled, pgItems, pgResults, pgSightings } from "./pg-reader";
 import { audioExtension } from "./rules";
 import type { Store } from "./store";
 import type { Box, DeviceStatus, Item, JobSource, JobView, Sighting, WordTime } from "./types";
@@ -38,6 +39,8 @@ type Stored = {
   snapshotKey: string;
   width: number;
   height: number;
+  /** A named zone from Postgres. Without one, the sighting says where in the frame it was. */
+  zone?: string | null;
 };
 type JobRec = {
   id: string;
@@ -385,7 +388,7 @@ export class S3Store implements Store {
       label: s.label,
       confidence: s.confidence,
       box: s.box,
-      zone: `${where([s.box.x, s.box.y, s.box.x + s.box.w, s.box.y + s.box.h])} of the frame`, // no named places yet: say where in the photo
+      zone: s.zone ?? `${where([s.box.x, s.box.y, s.box.x + s.box.w, s.box.y + s.box.h])} of the frame`,
       snapshot: { id: s.snapshotKey, url: await this.sign(s.snapshotKey), width: s.width, height: s.height },
     };
   }
@@ -416,7 +419,22 @@ export class S3Store implements Store {
 
   /** One row per result file in the bucket, newest first. A question this server handled adds its question and reply text. */
   async listJobs(limit: number) {
-    const rows = (await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
+    if (pgEnabled()) {
+      const rows = (await pgResults(limit)).map((r): JobRec => this.jobs.get(r.id) ?? {
+        id: r.id,
+        status: "done",
+        createdAt: r.at,
+        transcript: r.transcript,
+        targets: r.targets,
+        unsupported: null,
+        target: r.targets[0] ?? null,
+        found: r.found,
+        photo: { key: r.snapshotKey, seenAt: r.at, width: r.width, height: r.height },
+        match: r.match,
+      });
+      return Promise.all(rows.map((r) => this.view(r)));
+    }
+    const rows =(await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
       const mine = this.jobs.get(id);
       if (mine) return mine;
       const first = result.matches[0];
@@ -437,6 +455,7 @@ export class S3Store implements Store {
   }
 
   private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {
+    if (pgEnabled()) return (await pgItems()).map((i) => ({ item: { id: slug(i.name), name: i.name, lostCount: i.lostCount }, seen: i.seen }));
     const rows = await this.recentResults();
     const lost: Record<string, number> = {};
     for (const { result } of rows) {
@@ -464,6 +483,7 @@ export class S3Store implements Store {
   async itemSightings(id: string, { limit, before }: { limit: number; before?: string }) {
     const row = (await this.items()).find((r) => r.item.id === id);
     if (!row) return null;
+    if (pgEnabled()) return Promise.all((await pgSightings(row.item.name, limit, before)).map((s) => this.sighting(s)));
     const cutoff = before ? Date.parse(before) : Infinity;
     const page = this.sightings(await this.recentResults())
       .filter((s) => s.label === row.item.name && Date.parse(s.seenAt) < cutoff)
