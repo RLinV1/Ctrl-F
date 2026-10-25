@@ -91,6 +91,12 @@ export async function getReplyAudio(store: Store, id: string) {
   return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no reply audio", 404);
 }
 
+/** The narrator's voiced remark on the photo being taken, kept in memory only. */
+export async function getRemarkAudio(store: Store, id: string) {
+  const audio = await store.remarkAudio(id);
+  return audio ? new Response(new Uint8Array(audio), { headers: { "content-type": "audio/mpeg" } }) : error("no remark audio", 404);
+}
+
 export async function postCorrection(store: Store, id: string, request: Request) {
   let found: unknown;
   try {

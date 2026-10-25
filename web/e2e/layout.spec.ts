@@ -140,6 +140,51 @@ test("steam still clearing is wiped off the full photo at once, so no white haze
   await expect(steam).toBeHidden({ timeout: 1000 });
 });
 
+test("the narrator remarks when the photo is taken, and the answer replaces the remark", async ({ page }) => {
+  // The job turns claimed (the photo is in) with a remark, then is answered. Gemini and ElevenLabs are stubbed out:
+  // the remark audio is not playable, so this also covers a blocked voice, where the words still show.
+  let state: "pending" | "claimed" | "done" = "pending";
+  const base = {
+    id: "job-remark", stale: false, createdAt: new Date().toISOString(), transcript: "Where are my keys?", target: "keys",
+    itemId: null, found: null, corrected: false, replyText: null, replyAudioUrl: null, replyPending: false, replyTimings: null,
+    photo: null, match: null, lastSighting: null, error: null, remark: null,
+  };
+  const remark = { text: "Hold quite still, keys, the lens has you now.", audioUrl: "/api/jobs/job-remark/remark", timings: [] };
+  let remarkFetches = 0;
+  await page.route("**/api/jobs/latest**", (route) => route.fulfill({ status: 204 }));
+  await page.route("**/api/jobs", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ json: { id: base.id } }) : route.fallback(),
+  );
+  await page.route("**/api/jobs/job-remark/remark", (route) => {
+    remarkFetches++;
+    return route.fulfill({ body: "not audio", contentType: "audio/mpeg" });
+  });
+  await page.route("**/api/jobs/job-remark", (route) =>
+    route.fulfill({
+      json:
+        state === "pending" ? { ...base, status: "pending" }
+        : state === "claimed" ? { ...base, status: "claimed", remark }
+        : { ...base, status: "done", found: true, replyText: "Your keys are on the desk, old chap." },
+    }),
+  );
+
+  await page.goto("/");
+  await expect(page.getByTestId("prompt")).toHaveAttribute("data-live", "true");
+  await expect(page.getByRole("textbox")).toHaveAttribute("placeholder", "Where are my keys?");
+  await page.getByRole("textbox").fill("Where are my keys?");
+  await page.getByRole("textbox").press("Enter");
+  await expect(page.getByTestId("remark")).toHaveCount(0); // no photo yet, no remark
+
+  state = "claimed"; // the camera's photo is in
+  await expect(page.getByTestId("remark")).toHaveText(remark.text);
+  await expect.poll(() => remarkFetches).toBeGreaterThan(0);
+
+  state = "done";
+  await expect(page.getByTestId("answer")).toContainText("on the desk");
+  await expect(page.getByTestId("remark")).toHaveCount(0);
+  await expect(page.getByTestId("remark-audio")).toHaveCount(0); // its voice is gone with it
+});
+
 test("the prompt is a brass-framed walnut panel around parchment, with a brass send button", async ({ page }) => {
   await page.route("**/api/jobs/latest**", (route) => route.fulfill({ status: 204 }));
   await page.goto("/");

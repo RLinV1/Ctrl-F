@@ -386,6 +386,7 @@ function AskSession() {
               onSettled={onSettled}
               key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
               line={line}
+              remark={phase.kind === "waiting" ? phase.job?.remark : null}
               working={working}
             />
           </StageFrame>

@@ -117,6 +117,7 @@ export function Stage({
   working,
   onSettled,
   onPhotoView,
+  remark,
 }: {
   /** What the narrator says when there is no answer to read. */
   line: ReactNode;
@@ -125,8 +126,27 @@ export function Stage({
   onSettled?: () => void;
   /** Told whenever the full camera photo is shown or hidden, so steam left over can clear off it. */
   onPhotoView?: (shown: boolean) => void;
+  /** The narrator's quip on the photo being taken, spoken while the question is still unanswered. */
+  remark?: JobView["remark"];
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  // The remark: spoken once per question per browser session. Its text shows while he says it (or
+  // stays, if the browser blocked the voice); then the dialogue goes back to the status line.
+  // The answer replaces this whole stage, which stops a remark still playing.
+  const remarkRef = useRef<HTMLAudioElement>(null);
+  const [remarkSaid, setRemarkSaid] = useState<"no" | "saying" | "said">("no");
+  const remarkUrl = remark?.audioUrl;
+  useEffect(() => {
+    const audio = remarkRef.current;
+    if (!(remarkUrl && audio)) return;
+    const key = `ctrlf-remarked:${remarkUrl}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* private storage: still play it once in this stage */ }
+    audio.play().catch(() => setRemarkSaid("saying")); // blocked: show the words without the voice
+    return () => audio.pause();
+  }, [remarkUrl]);
   const [playing, setPlaying] = useState(false);
   const [blocked, setBlocked] = useState(() => {
     try { return Boolean(answer?.id && sessionStorage.getItem(`ctrlf-played:${answer.id}`)); }
@@ -315,7 +335,9 @@ export function Stage({
             </p>
           ) : (
             <div className="flex items-start justify-between gap-4">
-              <div className="text-[19px] leading-snug sm:text-[22px]">{line}</div>
+              <div className="text-[19px] leading-snug sm:text-[22px]">
+                {remark && remarkSaid === "saying" ? <span data-testid="remark">{remark.text}</span> : line}
+              </div>
               {working && <CogTrain className="shrink-0" label="Working on it" />}
             </div>
           )}
@@ -355,6 +377,17 @@ export function Stage({
               </button>
             )}
           </div>
+          {!answer && remark && (
+            // biome-ignore lint/a11y/useMediaCaption: the dialogue box shows the remark's words
+            <audio
+              data-testid="remark-audio"
+              onEnded={() => setRemarkSaid("said")}
+              onPlay={() => setRemarkSaid("saying")}
+              preload="auto"
+              ref={remarkRef}
+              src={remark.audioUrl}
+            />
+          )}
           {answer?.replyAudioUrl && (
             // biome-ignore lint/a11y/useMediaCaption: the dialogue box is the caption
             <audio
