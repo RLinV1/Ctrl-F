@@ -25,7 +25,7 @@ Each group is a separate reviewable milestone/PR. Keep the current runtime usabl
 
 - [x] 4.1 Add bounded hold-to-record/release-to-submit behavior using configurable `PI_AUDIO_DEVICE`, ALSA capture and supported Ogg encoding; verify debounce, short clips, maximum duration, missing device and cleanup using mocked subprocess/GPIO pytest tests.
 - [x] 4.2 Upload Pi audio and an immediately captured photo through S3 with a ready marker and persistent local retry spool; verify marker ordering, retry IDs, duplicate button edges, and serialized camera access with pytest.
-- [ ] 4.3 Preserve explicit training-photo CLI mode, document OS packages, ALSA discovery, device selection, recording limits and new env names in `.env.example`, `docs/TECH_STACK.md` and Pi instructions; verify actual Logitech audio plus photo capture on the Pi and record the manual result.
+- [x] 4.3 Preserve explicit training-photo CLI mode, document OS packages, ALSA discovery, device selection, recording limits and new env names in `.env.example`, `docs/TECH_STACK.md` and Pi instructions; verify actual Logitech audio plus photo capture on the Pi and record the manual result.
 
 ## 5. Narration and historical photo presentation
 
@@ -75,6 +75,6 @@ S3-only Pi deployment evidence: revision d073208 installed on raymond's Pi;
 14/14 Pi tests passed on Python 3.13 with system GPIO bindings. User service
 `ctrlf-pi.service` is active, enabled, has zero restarts, and lingering is enabled.
 Its EnvironmentFile is `/home/raymond/.ctrlf.env`, preserved with a private backup.
-The Brio 101 microphone, JPEG capture, GPIO 5 and S3 listing checks passed. A real
-physical-button upload and the full spoken response remain live acceptance until
-the matching desktop/web revisions are deployed; task 7.2 stays open.
+The Brio 101 microphone, JPEG capture, GPIO 5 and S3 listing checks passed. A real physical-button test then uploaded Ogg audio and JPEG successfully, with
+the ready marker last and an empty local spool. The full spoken response still
+awaits the matching desktop/web deployments; task 7.2 stays open.
