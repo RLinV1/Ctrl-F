@@ -48,3 +48,15 @@ restarted with root env and returns HTTP 200. The no-replay update from PR #31
 is included. Original completed results were inspected read-only; the observed
 AirPods case/phone fixture supplies regression coverage without overwriting the
 historical request or manufacturing a new sighting. Rollback checkpoints remain.
+
+
+## 5. Conversational request parsing
+- [x] 5.1 Strip bounded greetings, hesitation punctuation and standalone determiners in both parsers while preserving object descriptions and explicit lists; verify shared real-transcript/regression fixtures with pytest and Playwright.
+- [x] 5.2 Verify request queueing, aliases and polluted-catalog behavior without paid calls; update architecture and request docs and run TypeScript/lint/OpenSpec checks.
+- [ ] 5.3 Publish and deploy matching web/desktop code, preserve env and checkpoints, and verify the deployed parser and service health.
+
+Conversational parsing checks: 168 desktop tests passed with isolated server
+Postgres (zero skips; application counts unchanged), 116 Playwright tests passed
+across desktop/mobile, including shared transcript fixtures and real store/S3
+queueing for typed/recorded requests. TypeScript, targeted lint, strict OpenSpec
+and diff checks passed. Provider calls are mocked in automated tests.

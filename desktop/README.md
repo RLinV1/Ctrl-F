@@ -150,3 +150,12 @@ worker registers new categories and persists their sightings. Common English
 find/where requests and direct item phrases are supported. Individual-object
 identity and synonym merging are not guaranteed. See `docs/ROLLBACK.md` for the
 preserved catalog-only checkpoint.
+
+
+Conversational requests strip greetings before commands and hesitation pauses
+before item splitting. “Yo, where is my, uh, red water bottle and phone?” yields
+`red water bottle` and `phone`. Standalone determiners/fillers are not targets,
+even if earlier requests added them to the catalog. Explicit lists, descriptors
+and meaningful words such as yo-yo or plum remain supported. This is bounded
+English command parsing, without an extra AI call. Historical junk rows are not
+deleted and existing completed requests are not automatically reprocessed.

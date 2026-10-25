@@ -6,7 +6,7 @@ for (const fixture of cases) {
   test(`open target phrase: ${fixture.text}`, async () => {
     const result = await pickTargets(fixture.text, known);
     // Web passes alias phrases to desktop, which resolves database aliases.
-    const expected = fixture.text.includes("keyring") ? ["keyring"] : fixture.targets;
+    const expected = fixture.targets.map((target) => target === "keys" && fixture.text.includes("keyring") ? "keyring" : target);
     expect(result).toEqual({targets:expected,unsupported:null});
   });
 }

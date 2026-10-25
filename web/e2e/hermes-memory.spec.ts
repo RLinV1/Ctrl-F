@@ -14,7 +14,7 @@ const result: Result = { version: 2, status: "not_visible", target: "keys", matc
   width: 1280, height: 720, captured_at: "2026-10-25T10:00:00Z", history_status: "available", last_sighting: evidence };
 
 // This integration uses real handlers/store and mocks only the external boundaries.
-function fixture(objects = new Map<string, string>()) {
+function fixture(objects = new Map<string, string>(), transcript = "Where are my keys?") {
   const client = { send: async (command: unknown) => {
     const c = command as {input: {Key?: string; Prefix?: string; Body?: string}};
     if (command instanceof ListObjectsV2Command) return {Contents: [...objects.keys()].filter(k => k.startsWith(c.input.Prefix!))
@@ -28,7 +28,7 @@ function fixture(objects = new Map<string, string>()) {
     throw new Error("Unexpected external command");
   }} as unknown as S3Client;
   const store = new S3Store({client, sign: async key => `https://photos.invalid/${key}`, services: {
-    transcribe: async () => "Where are my keys?", narrate: async facts => plainReply(facts),
+    transcribe: async () => transcript, narrate: async facts => plainReply(facts),
     speak: async () => ({audio: Buffer.from("mock voice"), timings: []}),
     pickTargets,
   }});
@@ -180,4 +180,20 @@ test("multi-item plain fallback preserves each target and its independent histor
   expect(reply).toContain("I cannot see your wallet now, and history cannot currently be checked.");
   expect(reply.indexOf("keys")).toBeLessThan(reply.indexOf("phone"));
   expect(reply.indexOf("Your phone")).toBeLessThan(reply.indexOf("wallet"));
+});
+
+
+test("conversational typed and recorded requests queue only physical item phrases", async () => {
+  const transcript = "Yo, where is my, uh, red water bottle and phone?";
+  const {store,objects} = fixture(new Map<string,string>(),transcript);
+  const typed = await store.askText(transcript);
+  const recorded = await store.createJob(new Uint8Array([1]),"audio/webm");
+  for (const job of [typed,recorded]) {
+    expect(JSON.parse(objects.get(`jobs/${job.id}.json`)!).targets).toEqual(["red water bottle","phone"]);
+  }
+});
+
+test("old junk item names do not become targets", async () => {
+  expect(await pickTargets("Where is my, uh, water bottle?",["my","uh","yo","bottle"])).toEqual({targets:["water bottle"],unsupported:null});
+  expect(await pickTargets("my, uh, yo",["my","uh","yo"])).toEqual({targets:[],unsupported:null});
 });

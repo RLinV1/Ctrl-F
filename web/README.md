@@ -94,3 +94,12 @@ requests such as “bottle and keys”; the known item list is not an allowlist.
 Common English find/where requests and direct names support up to eight targets
 of 80 characters each. Descriptions are preserved. Deploy matching web/desktop
 code; the Pi protocol is unchanged. Rollback: `docs/ROLLBACK.md`.
+
+
+Conversational requests strip greetings before commands and hesitation pauses
+before item splitting. “Yo, where is my, uh, red water bottle and phone?” yields
+`red water bottle` and `phone`. Standalone determiners/fillers are not targets,
+even if earlier requests added them to the catalog. Explicit lists, descriptors
+and meaningful words such as yo-yo or plum remain supported. This is bounded
+English command parsing, without an extra AI call. Historical junk rows are not
+deleted and existing completed requests are not automatically reprocessed.

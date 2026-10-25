@@ -91,5 +91,128 @@
     "targets": [
       "sketchbook"
     ]
+  },
+  {
+    "text": "Yo where is my water bottle",
+    "targets": [
+      "water bottle"
+    ]
+  },
+  {
+    "text": "Yo, where my AirPods at?",
+    "targets": [
+      "airpods"
+    ]
+  },
+  {
+    "text": "Where is my, uh, water bottle?",
+    "targets": [
+      "water bottle"
+    ]
+  },
+  {
+    "text": "Yo, where is my, uh, red water bottle and phone?",
+    "targets": [
+      "red water bottle",
+      "phone"
+    ]
+  },
+  {
+    "text": "Hey, can you tell me where my blue bottle is?",
+    "targets": [
+      "blue bottle"
+    ]
+  },
+  {
+    "text": "Uh, hello, could you please find my keys and my phone?",
+    "targets": [
+      "keys",
+      "phone"
+    ]
+  },
+  {
+    "text": "Where are my red, um, water bottle and the phone?",
+    "targets": [
+      "red water bottle",
+      "phone"
+    ]
+  },
+  {
+    "text": "Find my keys, phone, and my headphones",
+    "targets": [
+      "keys",
+      "phone",
+      "headphones"
+    ]
+  },
+  {
+    "text": "Where are my, um, keys, and uh, phone?",
+    "targets": [
+      "keys",
+      "phone"
+    ]
+  },
+  {
+    "text": "My",
+    "targets": []
+  },
+  {
+    "text": "Yo",
+    "targets": []
+  },
+  {
+    "text": "Where is my?",
+    "targets": []
+  },
+  {
+    "text": "Where is my, uh?",
+    "targets": []
+  },
+  {
+    "text": "my, the, uh, yo",
+    "targets": []
+  },
+  {
+    "text": "Where is my yo-yo?",
+    "targets": [
+      "yo yo"
+    ]
+  },
+  {
+    "text": "hi hat",
+    "targets": [
+      "hi hat"
+    ]
+  },
+  {
+    "text": "Find my plum-colored mug",
+    "targets": [
+      "plum colored mug"
+    ]
+  },
+  {
+    "text": "Where is my drum?",
+    "targets": [
+      "drum"
+    ]
+  },
+  {
+    "text": "I can’t find my bottle",
+    "targets": [
+      "bottle"
+    ]
+  },
+  {
+    "text": "Can’t find bottle",
+    "targets": [
+      "bottle"
+    ]
+  },
+  {
+    "text": "Yo, where are my keyring and phone at?",
+    "targets": [
+      "keys",
+      "phone"
+    ]
   }
 ]
