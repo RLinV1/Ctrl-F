@@ -414,29 +414,26 @@ export class S3Store implements Store {
     };
   }
 
-  /** This session's questions, then older results from the bucket (those have no question or reply text). */
+  /** One row per result file in the bucket, newest first. A question this server handled adds its question and reply text. */
   async listJobs(limit: number) {
-    const mine = [...this.jobs.values()];
-    const known = new Set(mine.map((j) => j.id));
-    const older: JobRec[] = (await this.recentResults())
-      .filter((r) => !known.has(r.id))
-      .map(({ id, at, result }) => {
-        const first = result.matches[0];
-        return {
-          id,
-          status: "done",
-          createdAt: at,
-          transcript: "",
-          targets: [],
-          unsupported: null,
-          target: result.target,
-          found: result.status === "found",
-          photo: { key: photoKey(id), seenAt: at, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
-          match: result.status === "found" && first ? this.stored(id, at, result, first, result.target ?? first.name) : null,
-        };
-      });
-    const all = [...mine, ...older].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit);
-    return Promise.all(all.map((r) => this.view(r)));
+    const rows = (await this.recentResults()).slice(0, limit).map(({ id, at, result }): JobRec => {
+      const mine = this.jobs.get(id);
+      if (mine) return mine;
+      const first = result.matches[0];
+      return {
+        id,
+        status: "done",
+        createdAt: at,
+        transcript: "",
+        targets: [],
+        unsupported: null,
+        target: result.target,
+        found: result.status === "found",
+        photo: { key: photoKey(id), seenAt: at, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
+        match: result.status === "found" && first ? this.stored(id, at, result, first, result.target ?? first.name) : null,
+      };
+    });
+    return Promise.all(rows.map((r) => this.view(r)));
   }
 
   private async items(): Promise<{ item: Omit<Item, "lastSeen">; seen: Stored | null }[]> {

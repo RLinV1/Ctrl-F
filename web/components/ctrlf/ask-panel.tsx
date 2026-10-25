@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Keyboard, Mic } from "lucide-react";
+import { Camera, ChevronDown, ChevronUp, Keyboard, Mic } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import AI_Prompt, { type PromptMode } from "@/components/kokonutui/ai-prompt";
@@ -194,6 +194,8 @@ function AskSession() {
   const status = useDeviceStatus();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [mode, setMode] = useState<AskMode>("type");
+  // The prompt floats over the stage; minimising it clears the narrator's dialogue.
+  const [minimized, setMinimized] = useState(false);
   const holdRef = useRef<Promise<boolean> | null>(null);
   const recording = phase.kind === "recording";
   const elapsed = useElapsed(recording);
@@ -359,14 +361,24 @@ function AskSession() {
       <div className="flex flex-1 items-center justify-center" data-mic={mic} data-phase={phase.kind}>
         <Stage
           answer={answer}
-          answeredAt={phase.kind === "answered" ? phase.at : 0}
           aside={answer && <CorrectPrompt job={answer} key={`${answer.id}:${answer.corrected}`} onCorrect={correct} />}
           key={answer ? `${answer.id}:${answer.corrected}` : "idle"}
           line={line}
           working={working}
         />
       </div>
-      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] pb-4">
+      <div className="sticky bottom-0 mx-auto flex w-full max-w-[420px] flex-col items-center pb-3">
+      <button
+        aria-expanded={!minimized}
+        aria-label={minimized ? "Show the prompt" : "Minimise the prompt"}
+        className="mb-1 flex h-4 w-7 items-center justify-center bg-brass text-ink shadow-sm hover:bg-brass/85 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brass"
+        data-testid="prompt-toggle"
+        onClick={() => setMinimized((m) => !m)}
+        type="button"
+      >
+        {minimized ? <ChevronUp aria-hidden className="size-3" /> : <ChevronDown aria-hidden className="size-3" />}
+      </button>
+      <div className={minimized ? "hidden" : "w-full"}>
       <AI_Prompt
         action={action}
         body={body}
@@ -377,6 +389,7 @@ function AskSession() {
         onSubmit={askText}
         textMode="type"
       />
+      </div>
 
       {mode === "speak" && mic === "denied" && (
         <p className="text-copper text-sm" role="alert">

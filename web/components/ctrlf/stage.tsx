@@ -1,10 +1,9 @@
 "use client";
 
 import { Pause, Play } from "lucide-react";
-import Link from "next/link";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type { Box, JobView, Snapshot } from "@/lib/data/types";
-import { percent, placeWords, relativeTime } from "@/lib/format";
+import { percent, placeWords } from "@/lib/format";
 import { prefersReducedMotion } from "@/lib/motion/use-anime";
 import { cn } from "@/lib/utils";
 import { CogTrain } from "./cog-train";
@@ -113,14 +112,12 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
 export function Stage({
   line,
   answer,
-  answeredAt,
   working,
   aside,
 }: {
   /** What the narrator says when there is no answer to read. */
   line: ReactNode;
   answer: JobView | null;
-  answeredAt: number;
   working: boolean;
   /** A note under the dialogue, e.g. the camera is offline. */
   aside?: ReactNode;
@@ -173,14 +170,6 @@ export function Stage({
   };
 
   let caption: ReactNode = null;
-  const seeHistory = answer?.itemId && (
-    <>
-      {" · "}
-      <Link className="underline underline-offset-4" href={`/items/${answer.itemId}`} onClick={(e) => e.stopPropagation()}>
-        See where the {name} {name.endsWith("s") ? "have" : "has"} been
-      </Link>
-    </>
-  );
   if (answer?.found && answer.match) {
     const place = placeWords(answer.match.zone);
     caption = (
@@ -194,23 +183,6 @@ export function Stage({
     caption = (
       <span data-testid="found-caption">
         <span className="font-semibold first-letter:uppercase">{name}</span> · in the photo, by your word
-      </span>
-    );
-  } else if (answer && answer.found === null) {
-    caption = <span>{answer.target ? `Cannot seek the ${name} yet · what the camera saw` : "What the camera saw"}</span>;
-  } else if (answer?.lastSighting) {
-    const place = placeWords(answer.lastSighting.zone);
-    caption = (
-      <span>
-        Not in view · last seen {relativeTime(answer.lastSighting.seenAt, answeredAt)}
-        {place ? ` on ${place}` : ""}
-        {seeHistory}
-      </span>
-    );
-  } else if (answer) {
-    caption = (
-      <span data-testid="never-seen">
-        The camera has not seen the {name} yet. Put it somewhere in view and it will be remembered.
       </span>
     );
   }
