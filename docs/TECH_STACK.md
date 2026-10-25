@@ -1,6 +1,6 @@
 # Tech Stack
 
-**Current target: deploy on the user's service hosts.** The coding workstation is not a runtime target. Hostnames, credentials, storage and Postgres connections are env-configured; no hosting provider is changed by this transition.
+**Current deployment:** web runs on this computer, processing on the desktop server, and camera/audio relay on the Pi. Hostnames, credentials, storage and Postgres connections are env-configured; no hosting provider is changed by this transition.
 
 Status column: **Decided** = user stated it. **Default** = our recommendation, change if the team disagrees.
 
@@ -93,4 +93,4 @@ and model/provider on the deployment checklist before production rollout.
 
 See `desktop/README.md`, `pi/README.md`, `web/README.md` and `docs/DEPLOYMENT.md`
 for host-specific startup, ALSA/ffmpeg packages, migrations, private S3 permissions
-and acceptance tests. The coding workstation is not a deployment target.
+and acceptance tests. The web currently runs on this computer; processing remains on its separate host.

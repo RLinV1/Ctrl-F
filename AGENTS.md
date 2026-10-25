@@ -74,10 +74,10 @@ Steampunk everywhere: web UI (brass, copper, aged paper, gears, gauges, Victoria
 
 - Managed Postgres + R2 vs self-hosted SeaweedFS.
 - Optional training experiments: which item classes and where training runs (outside the active Hermes runtime).
-- Changes to the target picker beyond the retained named-item matching and Gemini fallback.
+- Changes to item identity beyond normalized categories/descriptions and configured aliases.
 
 The active runtime uses a configured vision-capable Hermes Agent. YOLO training tools remain optional; no weights are required.
 
-Gemini writes Victorian replies and retains the existing target-picker fallback. Hermes handles image analysis and validates worker-supplied history; the worker queries local Postgres. ElevenLabs handles transcription and speech.
+Gemini writes Victorian replies. Web and desktop deterministically extract arbitrary item phrases without a fixed allowlist. Hermes handles image analysis and validates worker-supplied history; the worker queries local Postgres. ElevenLabs handles transcription and speech.
 - On-demand capture only vs periodic background snapshots.
 - Job hand-off: Pi polling `/api/jobs/next` (default) vs exposing the Pi through a tunnel.
