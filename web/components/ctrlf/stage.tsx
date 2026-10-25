@@ -241,7 +241,13 @@ export function Stage({
     // The frame and its steam sit outside (ask-panel.tsx), so they last from one answer to the next.
     <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink sm:aspect-video" data-testid="stage">
         {photo && (
-          <div aria-hidden={view === "talk"} className="absolute inset-0" data-shown={photoView || undefined} data-testid="camera-view">
+          // While shown, the photo sits above the steam layer (z-10), so steam can never wash over it.
+          <div
+            aria-hidden={view === "talk"}
+            className={cn("absolute inset-0", photoView && "z-[15]")}
+            data-shown={photoView || undefined}
+            data-testid="camera-view"
+          >
             <figure className="h-full w-full" data-testid={answer?.found ? "found" : "not-found"}>
               <SnapshotFrame
                 alt={

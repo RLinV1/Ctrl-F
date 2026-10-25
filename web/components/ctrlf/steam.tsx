@@ -32,10 +32,12 @@ type Wisp = {
 };
 
 const SCALE = 0.2; // canvas pixels per CSS pixel; vapour is soft, so a coarse canvas looks the same
-const MAX_WISPS = 150;
-// Frame budget: 25 fps while the steam moves in or out, 15 once the screen is hidden.
+const MAX_WISPS = 100;
+// Frame budget: 25 fps while the steam blasts in or thins away, 12 once the screen is hidden behind it.
+// The loop sleeps between frames (a timer, then one animation frame to draw), so it never wakes on
+// every screen refresh just to skip it.
 const FRAME_MS = 40;
-const SETTLED_FRAME_MS = 66;
+const SETTLED_FRAME_MS = 83;
 const VEIL = 0.9; // how opaque the veil gets once the screen is filled
 
 /** Soft, lumpy puffs: a bright core with a few offset lobes, greyer underneath. */
@@ -119,6 +121,11 @@ export function Steam({ on, vents, clear = false }: { on: boolean; vents: SteamV
     let veil = 0;
     let last = performance.now();
     let frame = 0;
+    let timer = 0;
+    // Sleep until the next frame is due, then draw on the browser's next paint.
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => { frame = requestAnimationFrame(tick); }, delay);
+    };
 
     const spawn = (vent: SteamVent, blast: boolean) => {
       const unit = Math.min(w, h * 1.78) / 1000; // keep the look the same at any screen size
@@ -130,7 +137,7 @@ export function Steam({ on, vents, clear = false }: { on: boolean; vents: SteamV
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         r: (10 + Math.random() * 14) * unit,
-        rMax: (160 + Math.random() * 170) * unit,
+        rMax: (190 + Math.random() * 190) * unit,
         age: 0,
         life: 2.2 + Math.random() * 1.4,
         peak: 0.45 + Math.random() * 0.35,
@@ -140,12 +147,7 @@ export function Steam({ on, vents, clear = false }: { on: boolean; vents: SteamV
     };
 
     const tick = (now: number) => {
-      // Skip frames beyond the budget: vapour needs no more than 25 fps.
       const settled = emitting && now / 1000 - startedAt > 1.5 && veil > VEIL * 0.95;
-      if (now - last < (settled ? SETTLED_FRAME_MS : FRAME_MS) - 2) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
       const dt = Math.min(0.12, (now - last) / 1000);
       last = now;
       const t = now / 1000;
@@ -168,7 +170,7 @@ export function Steam({ on, vents, clear = false }: { on: boolean; vents: SteamV
         const blast = since < 0.55;
         const area = Math.min(1.2, Math.max(0.5, (w * h) / (1000 * 560)));
         // Once the screen is hidden behind the veil, a gentle stream keeps it moving.
-        const perVent = (blast ? 45 : settled ? 7 : 14) * area;
+        const perVent = (blast ? 40 : settled ? 4 : 10) * area;
         owed += perVent * ventsRef.current.length * dt;
         while (owed >= 1 && wisps.length < MAX_WISPS) {
           owed -= 1;
@@ -216,10 +218,11 @@ export function Steam({ on, vents, clear = false }: { on: boolean; vents: SteamV
         setRunning(false);
         return;
       }
-      frame = requestAnimationFrame(tick);
+      schedule(settled && !hurry ? SETTLED_FRAME_MS : FRAME_MS);
     };
     frame = requestAnimationFrame(tick);
     return () => {
+      window.clearTimeout(timer);
       cancelAnimationFrame(frame);
       observer.disconnect();
     };

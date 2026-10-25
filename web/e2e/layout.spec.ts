@@ -136,7 +136,9 @@ test("steam still clearing is wiped off the full photo at once, so no white haze
   await expect(page.getByTestId("answer")).toContainText("on the desk");
   await page.getByTestId("next").click();
   await expect(page.getByTestId("close-photo")).toBeVisible();
-  // Left alone, the vapour takes about three seconds to thin away; over the photo it must go at once.
+  // The shown photo sits above the steam layer (z-index 10), so steam can never wash over it...
+  await expect(page.getByTestId("camera-view")).toHaveCSS("z-index", "15");
+  // ...and, left alone, the vapour would take about three seconds to thin away; with the photo up it goes at once.
   await expect(steam).toBeHidden({ timeout: 1000 });
 });
 
