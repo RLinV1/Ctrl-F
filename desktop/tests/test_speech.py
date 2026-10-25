@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -66,3 +67,9 @@ def test_failed_stt_does_not_commit_a_verdict():
         prepare_question(session,uuid4(),datetime.now(UTC),b"OggS",MagicMock(side_effect=TranscriptionError("failed")))
     session.execute.assert_not_called()
     session.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("case", json.loads((Path(__file__).parent / "fixtures/target-phrases.json").read_text()))
+def test_arbitrary_target_phrases(case):
+    catalog = {"keys": ["keyring"], "phone": [], "headphones": [], "airpods case": []}
+    assert match_targets(case["text"], catalog) == case["targets"]

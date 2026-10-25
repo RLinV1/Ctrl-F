@@ -157,3 +157,11 @@ above, the dedicated local Postgres instance, existing user service/flock, priva
 configuration, completed result objects and S3 transcript/ready-marker behavior.
 Validate the combined code against the server's disposable test DB before
 updating/restarting the single managed worker. No new DB migration is introduced.
+
+
+## Open-category follow-up
+
+`arbitrary-item-search` supersedes this change's closed-catalog assumptions.
+Requests and validated scene names may introduce new bounded item categories;
+the existing catalog supplies naming/alias hints. Gemini remains the narrator.
+The scene-analysis and memory deltas above are reconciled with that behavior.

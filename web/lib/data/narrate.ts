@@ -1,3 +1,4 @@
+import { extractTargets } from "./targets";
 /** Ported from main's dev-test/find.py and dev-test/narrator.py: where() and near() word a box, Gemini words the reply, ElevenLabs does STT and TTS. */
 import type { WordTime } from "./types";
 
@@ -96,7 +97,7 @@ export function factsFor(result: Result, lastSeen?: string | null) {
   } else if (result.target) {
     Object.assign(facts, entry(result.target, result.status, result.matches, result.detections));
   }
-  if (result.status === "no_target") facts.items_i_can_find = result.known ?? KNOWN_ITEMS;
+  if (result.status === "no_target") facts.ask_for_item = true;
   if (result.history_status) Object.assign(facts, historyFacts(result.history_status, result.last_sighting));
   else if (lastSeen) facts.last_seen_ago = lastSeen;
   else if (result.status === "not_visible") facts.history_status = "unavailable";
@@ -179,28 +180,9 @@ export function namedItems(said: string, known: string[]): string[] {
   return hits.filter((k) => !hits.some((other) => other !== k && other.includes(k)));
 }
 
-/** Which known items did the user ask for? `unsupported` is an item they named that we cannot find. */
+/** Arbitrary object phrases; the catalog is a naming hint, never an allowlist. */
 export async function pickTargets(transcript: string, known: string[]): Promise<{ targets: string[]; unsupported: string | null }> {
-  const said = transcript.toLowerCase();
-  if (!said.trim()) return { targets: [], unsupported: null };
-  const direct = namedItems(said, known);
-  if (direct.length) return { targets: direct, unsupported: null }; // saves a Gemini round trip when the item is named plainly
-  try {
-    const prompt =
-      `Items we can find: ${JSON.stringify(known)}. The user said: ${JSON.stringify(transcript)}. ` +
-      "Reply with JSON only: {\"targets\": [items from the list the user asked for, exactly as spelled there], " +
-      "\"unsupported\": \"an item they asked for that is not in the list, else null\"}.";
-    const text = await gemini({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 200, responseMimeType: "application/json" },
-    });
-    const picked = JSON.parse(text);
-    const targets: string[] = (picked.targets ?? []).filter((t: string) => known.includes(t));
-    return { targets, unsupported: typeof picked.unsupported === "string" ? picked.unsupported : null };
-  } catch (error) {
-    console.error("[pickTargets]", error);
-    return { targets: known.filter((k) => said.includes(k)), unsupported: null };
-  }
+  return { targets: extractTargets(transcript, known), unsupported: null };
 }
 
 function elevenKey(): string {

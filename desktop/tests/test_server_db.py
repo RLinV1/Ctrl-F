@@ -39,6 +39,8 @@ class Session:
     def __init__(self, items): self.items = items
     def __enter__(self): return self
     def __exit__(self, *args): pass
+    def begin(self): return self
+    def execute(self, query): pass
     def scalar(self, query): return None
     def scalars(self, query): return SimpleNamespace(all=lambda: self.items)
 

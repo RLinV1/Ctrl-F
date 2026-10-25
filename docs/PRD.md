@@ -39,11 +39,11 @@ A camera-equipped Raspberry Pi plus a voice interface. The user asks for an item
 | ID | Requirement |
 | --- | --- |
 | F1 | Record browser audio for web requests or Logitech webcam audio for Pi-button requests; transcribe with ElevenLabs on web for browser audio and desktop for Pi audio. |
-| F2 | Normalize the transcript to canonical tracked item names and aliases before image analysis, retaining the current target picker. |
+| F2 | Extract bounded arbitrary item phrases; preserve descriptions and resolve existing canonical names/aliases without a fixed allowlist. |
 | F3 | Pi captures a photo on command and transmits it to the desktop. |
-| F4 | The processing worker calls Hermes to identify all visible tracked objects, with validated boxes, grounded location descriptions and optional confidence. |
+| F4 | The processing worker calls Hermes to identify requested and incidental visible physical objects beyond the existing catalog, with validated boxes, grounded location descriptions and optional confidence. |
 | F5 | Match targets to validated observations independently of YOLO classes, and retrieve prior Postgres sightings when absent. |
-| F6 | Store each search snapshot privately and persist all visible tracked-object sightings in Postgres, including incidental objects. |
+| F6 | Store each search snapshot privately and persist validated visible-object sightings, registering new categories automatically in Postgres, including incidental objects. |
 | F7 | Increment a tracked target's lost count once when successful analysis finds no match; preserve last-seen location and do not count processing failures as losses. |
 | F8 | Generate a short spoken reply (Gemini as a witty steampunk narrator, ElevenLabs TTS) with current location or last-seen location/time, played through the open browser for either trigger. |
 | F9 | Web UI lists items, marked current or last-seen snapshots, location/time, history, and lost count, distinguishing unavailable history from never seen. |

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { S3Client, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { S3Store } from "../lib/data/s3-store";
 import { postDeviceJob, getLatestJob } from "../lib/api/handlers";
-import { factsFor, plainReply, type Result } from "../lib/data/narrate";
+import { factsFor, plainReply, pickTargets, type Result } from "../lib/data/narrate";
 
 test.beforeEach(() => { process.env.DATABASE_URL = ""; });
 
@@ -30,7 +30,7 @@ function fixture(objects = new Map<string, string>()) {
   const store = new S3Store({client, sign: async key => `https://photos.invalid/${key}`, services: {
     transcribe: async () => "Where are my keys?", narrate: async facts => plainReply(facts),
     speak: async () => ({audio: Buffer.from("mock voice"), timings: []}),
-    pickTargets: async () => ({targets: ["keys"], unsupported: null}),
+    pickTargets,
   }});
   return {store, objects};
 }
@@ -134,4 +134,19 @@ test("newly discovered ready request shows processing before a result exists", a
   const job = await store.getJob(deviceRequestId);
   expect(job?.status).toBe("claimed");
   expect(job?.found).toBeNull();
+});
+
+
+test("unconfigured bottle and mixed targets reach S3 and render factual voice results", async () => {
+  const {store,objects} = fixture();
+  const job = await store.askText("Where are my bottle and keys?");
+  expect(JSON.parse(objects.get(`jobs/${job.id}.json`)!).targets).toEqual(["bottle", "keys"]);
+  const detection = {name:"bottle",conf:null,box:[.1,.2,.3,.7],location_description:"On the desk beside the notebook"};
+  objects.set(`results/${job.id}_result.json`,JSON.stringify({version:2,status:"found",target:"bottle",matches:[detection],detections:[detection],history_status:"not_needed",persisted:true}));
+  objects.set(`results/${job.id}_result.jpg`,"mock image");
+  const done = await store.getJob(job.id);
+  expect(done?.found).toBe(true);
+  expect(done?.replyText).toContain("bottle");
+  expect(done?.replyText).toContain("beside the notebook");
+  await expect.poll(async () => (await store.getJob(job.id))?.replyAudioUrl).toBe(`/api/jobs/${job.id}/audio`);
 });

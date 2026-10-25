@@ -139,3 +139,14 @@ requirements in that existing environment rather than creating a duplicate worke
 Its dedicated Postgres runs on loopback port 55432; preserve its configured URLs
 and the older database on port 5432. Run destructive fixture tests only against
 the separate configured `ctrlf_hermes_test` database, never the application DB.
+
+
+## Open item categories
+
+The catalog supplies names/aliases rather than restricting supported objects.
+Ask for a bottle, notebook, or descriptive category such as a blue bottle without
+seeding it first. Hermes reports validated requested and incidental objects; the
+worker registers new categories and persists their sightings. Common English
+find/where requests and direct item phrases are supported. Individual-object
+identity and synonym merging are not guaranteed. See `docs/ROLLBACK.md` for the
+preserved catalog-only checkpoint.

@@ -1,0 +1,95 @@
+[
+  {
+    "text": "Where is my bottle?",
+    "targets": [
+      "bottle"
+    ]
+  },
+  {
+    "text": "Where are my bottle and keys?",
+    "targets": [
+      "bottle",
+      "keys"
+    ]
+  },
+  {
+    "text": "Can you please find my red notebook and the blue bottle?",
+    "targets": [
+      "red notebook",
+      "blue bottle"
+    ]
+  },
+  {
+    "text": "Where is my keyring?",
+    "targets": [
+      "keys"
+    ]
+  },
+  {
+    "text": "headphones and airpods case",
+    "targets": [
+      "headphones",
+      "airpods case"
+    ]
+  },
+  {
+    "text": "Where did I leave my coffee mug?",
+    "targets": [
+      "coffee mug"
+    ]
+  },
+  {
+    "text": "Have you seen the umbrella?",
+    "targets": [
+      "umbrella"
+    ]
+  },
+  {
+    "text": "bottle",
+    "targets": [
+      "bottle"
+    ]
+  },
+  {
+    "text": "hello there",
+    "targets": []
+  },
+  {
+    "text": "Where is it?",
+    "targets": []
+  },
+  {
+    "text": "Find my café mug, please!",
+    "targets": [
+      "café mug"
+    ]
+  },
+  {
+    "text": "Where are my phones?",
+    "targets": [
+      "phone"
+    ]
+  },
+  {
+    "text": "Where is my blue phone?",
+    "targets": [
+      "blue phone"
+    ]
+  },
+  {
+    "text": "Find xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "targets": []
+  },
+  {
+    "text": "Can you tell me where my bottle is?",
+    "targets": [
+      "bottle"
+    ]
+  },
+  {
+    "text": "Where do I find my sketchbook?",
+    "targets": [
+      "sketchbook"
+    ]
+  }
+]
