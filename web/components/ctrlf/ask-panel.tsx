@@ -366,7 +366,7 @@ function AskSession() {
           working={working}
         />
       </div>
-      <div className="sticky bottom-0 mx-auto w-full max-w-[760px] pb-4">
+      <div className="mx-auto w-full max-w-[760px] pb-4">
       <AI_Prompt
         action={action}
         body={body}
