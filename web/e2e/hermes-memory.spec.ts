@@ -30,7 +30,7 @@ function fixture(objects = new Map<string, string>(), transcript = "Where are my
   const store = new S3Store({client, sign: async key => `https://photos.invalid/${key}`, services: {
     transcribe: async () => transcript, narrate: async facts => plainReply(facts),
     speak: async () => ({audio: Buffer.from("mock voice"), timings: []}),
-    pickTargets,
+    pickTargets, remark: async () => null,
   }});
   return {store, objects};
 }
@@ -50,7 +50,7 @@ test("both trigger handlers reach validated historical evidence and voice", asyn
     objects.set(`results/${id}_result.jpg`, "mock image");
     const done = await store.getJob(id);
     expect(done?.status).toBe("done");
-    expect(done?.lastSighting?.snapshot.url).toContain("old-photo_result.jpg");
+    expect(done?.lastSighting?.snapshot.url).toContain("incoming/old-photo.jpg");
     expect(done?.match).toBeNull();
     expect(done?.replyText).toContain("desk beside the red mug");
     expect(done?.historyStatus).toBe("available");
@@ -116,7 +116,7 @@ test("S3-only Pi request is discoverable without HTTP submission after web resta
     expect(await store.latestJobId("device",new Date(0).toISOString())).toBe(deviceRequestId);
     const done = await store.getJob(deviceRequestId);
     expect(done?.transcript).toBe("Where are my keys?");
-    expect(done?.lastSighting?.snapshot.url).toContain("old-photo_result.jpg");
+    expect(done?.lastSighting?.snapshot.url).toContain("incoming/old-photo.jpg");
     expect(done?.replyText).toContain("desk beside the red mug");
   }
 });
@@ -196,4 +196,77 @@ test("conversational typed and recorded requests queue only physical item phrase
 test("old junk item names do not become targets", async () => {
   expect(await pickTargets("Where is my, uh, water bottle?",["my","uh","yo","bottle"])).toEqual({targets:["water bottle"],unsupported:null});
   expect(await pickTargets("my, uh, yo",["my","uh","yo"])).toEqual({targets:[],unsupported:null});
+});
+
+
+for (const source of ["web", "legacy-device", "device"] as const) {
+  test(`original photo backs current and stored snapshots for ${source}`, async () => {
+    const {store,objects} = fixture();
+    let id: string;
+    if (source === "device") {
+      id = deviceRequestId;
+      objects.set(`incoming/device/${id}.ready.json`,JSON.stringify(readyRequest()));
+    } else {
+      id = (await store.createJob(new Uint8Array([1]),"audio/ogg",source === "legacy-device" ? "device" : "web")).id;
+    }
+    const detection = {name:"keys",conf:null,box:[.1,.2,.3,.4],location_description:"Beside the phone"};
+    const incidental = {name:"phone",conf:null,box:[.6,.2,.8,.5]};
+    objects.set(`results/${id}_result.json`,JSON.stringify({version:2,status:"found",target:"keys",matches:[detection],detections:[detection,incidental],
+      ...(source === "device" ? {source:"device",transcript:"Where are my keys?",targets:["keys"]} : {})}));
+    objects.set(`results/${id}_result.jpg`,"annotated image with all detection boxes");
+    const original = source === "device" ? `incoming/device/${id}.jpeg` : `incoming/${id}.jpg`;
+    objects.set(original,"original image without boxes");
+    const done = await store.getJob(id);
+    expect(done?.photo?.url).toBe(`https://photos.invalid/${original}`);
+    expect(done?.match?.snapshot.url).toBe(`https://photos.invalid/${original}`);
+    expect(done?.match?.box).toEqual({x:.1,y:.2,w:expect.closeTo(.2),h:expect.closeTo(.2)});
+    const jobs = await fixture(objects).store.listJobs(10);
+    expect(jobs.find(job => job.id === id)?.photo?.url).toBe(`https://photos.invalid/${original}`);
+    const items = await store.listItems();
+    expect(items.find(item => item.name === "keys")?.lastSeen?.snapshot.url).toBe(`https://photos.invalid/${original}`);
+  });
+}
+
+
+test("raw camera pixels display with only the requested target circle", async ({page}) => {
+  const {store,objects} = fixture();
+  const job = await store.askText("Where are my keys?");
+  const keys = {name:"keys",conf:null,box:[.1,.2,.3,.4],location_description:"On the desk"};
+  const phone = {name:"phone",conf:null,box:[.6,.2,.8,.5]};
+  objects.set(`results/${job.id}_result.json`,JSON.stringify({version:2,status:"found",target:"keys",matches:[keys],detections:[keys,phone],width:1280,height:720}));
+  objects.set(`results/${job.id}_result.jpg`,"annotated pixels with keys and phone boxes");
+  objects.set(`incoming/${job.id}.jpg`,"original pixels");
+  const done = await store.getJob(job.id);
+  const fetchedPhotos: string[] = [];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH1kAAAAASUVORK5CYII=","base64");
+  await page.route("https://photos.invalid/**", route => {
+    fetchedPhotos.push(new URL(route.request().url()).pathname);
+    return route.fulfill({contentType:"image/png",body:png});
+  });
+  await page.addInitScript(() => { HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException("blocked","NotAllowedError")); HTMLMediaElement.prototype.pause = () => {}; });
+  await page.route("**/api/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/status") return route.fulfill({json:[{device:"pi",online:true,lastSeenAt:new Date().toISOString()},{device:"desktop",online:true,lastSeenAt:new Date().toISOString()}]});
+    if (path === "/api/items") return route.fulfill({json:[]});
+    if (path === "/api/jobs/latest") return route.fulfill({status:204});
+    if (path === "/api/jobs" && route.request().method() === "POST") return route.fulfill({status:201,json:{id:job.id}});
+    if (path === "/api/jobs") return route.fulfill({json:[]});
+    if (path === `/api/jobs/${job.id}`) return route.fulfill({json:done});
+    if (path.endsWith("/audio")) return route.fulfill({contentType:"audio/mpeg",body:Buffer.from([])});
+    return route.fulfill({status:404});
+  });
+  await page.emulateMedia({reducedMotion:"reduce"});
+  await page.goto("/");
+  await expect(page.getByTestId("prompt")).toHaveAttribute("data-live", "true");
+  await page.getByPlaceholder("Where are my keys?").fill("Where are my keys?");
+  await page.getByRole("button",{name:"Send question"}).click();
+  await expect(page.getByTestId("answer")).toContainText("Your keys");
+  await page.getByRole("button",{name:"Show the camera's photo"}).click();
+  await expect(page.getByAltText("Camera photo with the keys circled")).toHaveAttribute("src",`https://photos.invalid/incoming/${job.id}.jpg`);
+  const mark = page.getByRole("img",{name:"keys marked",exact:true});
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS("left",/px$/);
+  await expect(page.getByRole("img",{name:/phone/})).toHaveCount(0);
+  expect(fetchedPhotos).not.toContain(`/results/${job.id}_result.jpg`);
+  expect(await mark.evaluate(element => ({left:element.style.left,top:element.style.top,width:element.style.width,height:element.style.height}))).toEqual({left:"10%",top:"20%",width:"20%",height:"20%"});
 });

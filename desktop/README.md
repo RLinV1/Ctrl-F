@@ -61,25 +61,22 @@ Hermes version/commit and vision provider/model; this repo does not install or
 silently upgrade your existing agent. A real-image smoke check succeeded during
 development, but localization accuracy and deployment version remain operator checks.
 
-## Local sighting memory over the chat endpoint
+## Direct Postgres sighting memory
 
-Postgres stays on the processing host. After Hermes analyzes a photo, the worker
-queries local Postgres for each absent target's newest sighting strictly before
-that photo's capture time. It sends at most one relevant stored record through
-the existing authenticated `/v1/chat/completions` endpoint. The payload is capped
-at 16 KiB and includes only allowed sighting fields, not database credentials.
-Stored descriptions are data, not agent instructions.
+After target-guided image analysis, the worker reads each absent target's newest
+strictly earlier sighting from local Postgres and publishes that stored evidence
+directly. A successful empty query means `never_seen`; query/connection errors
+mean `unavailable`. No recall LLM or remote database connection is involved.
+Gemini still narrates the facts; ElevenLabs handles transcription and speech.
+`HermesClient.recall` and `memory_server.py` remain legacy helpers outside the
+active request path; their optional tests remain available.
 
-Hermes acknowledges the supplied status and detection ID. The worker validates
-that response and rechecks the newest earlier record before publishing stored
-location/time/photo/box facts. A successful empty query can become `never_seen`;
-DB errors, timeouts, contradictory responses or invented IDs become `unavailable`.
-Gemini still words the reply and ElevenLabs handles speech in the web service.
-
-The active worker requires no Hermes-host database connection, tunnel, MCP
-registration or `MEMORY_DATABASE_URL`. `memory_server.py` remains an optional
-legacy utility, outside the active search path. Existing helper roles may remain
-unused; do not expose Postgres or share its credentials with Hermes.
+The worker polls every second after a completed pass, retaining a 60-second
+failed-request backoff. Pi transcription runs alongside image download/decoding
+and saved-scene lookup using private sessions. Fresh vision still waits for the
+final targets to preserve descriptive matching. Idle S3 polling traffic increases
+threefold; the improvement is reduced waiting rather than a guaranteed total
+response time. No schema/env/Pi changes are needed.
 
 ## Start and verify
 
@@ -99,7 +96,7 @@ An explicit API/image check (does not write S3 or DB and may incur provider usag
 ```
 
 Use the actual image dimensions. This check validates the API result, not the
-supplied-history evidence path. The full deployment check is in [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+direct Postgres history path. The full deployment check is in [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
 
 Mocked tests:
 

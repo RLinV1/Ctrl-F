@@ -36,7 +36,7 @@ export type JobView = {
   replyTimings: WordTime[] | null;
   /** The narrator's spoken quip when the camera took its photo; only while the question is unanswered. */
   remark?: { text: string; audioUrl: string; timings: WordTime[] } | null;
-  /** The photo the camera took for this job, as the processing server marked it. */
+  /** The original camera photo; the web draws the selected target overlay separately. */
   photo: (Snapshot & { seenAt: string }) | null;
   match: Sighting | null;
   lastSighting: Sighting | null;

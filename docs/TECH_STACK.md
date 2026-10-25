@@ -16,7 +16,7 @@ Status column: **Decided** = user stated it. **Default** = our recommendation, c
 | Pi transport | S3 only | Decided | Pi audio/photo ready manifests; no web URL/token. Browser requests retain jobs/ capture relay. |
 | Pi <-> processing worker | Private S3 `jobs/`, `incoming/`, `results/` relay | Decided | Retains the actual dev transport; no inbound Pi/worker calls. |
 | Audio in/out | Browser microphone or Logitech webcam mic; browser playback | Decided | Hold the Pi button for webcam audio or use browser `MediaRecorder`. `getUserMedia` works on `http://localhost`. Opening the site from another device needs HTTPS. |
-| LLM | Google Gemini | Decided | Victorian narration only. Bounded deterministic item parsing on web/desktop; image analysis/memory use Hermes. |
+| LLM | Google Gemini | Decided | Victorian narration only. Bounded deterministic item parsing on web/desktop; image analysis uses Hermes; history comes directly from Postgres. |
 | Voice | ElevenLabs (STT and TTS) | Decided | Cloud API; needs internet and an API key. |
 | Object detection | Vision-capable Hermes Agent over authenticated HTTP | Decided | User-approved transition; endpoint from `.env`, strict observations and Postgres history tools. |
 | Web testing | Playwright (`@playwright/test`) | Decided | All website tests. External APIs are mocked. |
@@ -71,8 +71,8 @@ See [TECH_STACK_LIVE.md](TECH_STACK_LIVE.md) for the go-live stack (Vercel, GoDa
 
 The approved transition replaces YOLO inference with an `httpx>=0.28,<1` adapter,
 Pillow image annotation and the MCP SDK v1 (`mcp>=1.20,<2`) for the optional legacy
-memory helper. The active worker queries Postgres locally and supplies bounded
-evidence over the existing Hermes chat API; no remote database access is needed. Ultralytics remains only in optional training tools. Configure
+memory helper. The active worker queries Postgres locally and uses the stored
+evidence directly without a recall LLM round trip; no remote database access is needed. Ultralytics remains only in optional training tools. Configure
 these names in the appropriate host's env file (see `.env.example`):
 
 - `HERMES_BASE_URL`: authenticated agent API base URL including `/v1`; remote HTTPS.

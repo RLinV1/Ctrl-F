@@ -72,18 +72,22 @@ unscored ties use deterministic geometry. Named zones use the existing
 bottom-center-in-polygon rule. Item identity is a canonical category in v1, not an
 individual owner's wallet or set of keys.
 
-The desktop worker queries Postgres locally by canonical item UUID and current
-photo capture-time cutoff. At most one newest strictly earlier sighting is sent
-through the configured HTTPS chat endpoint, with a 16 KiB limit and an explicit
-field allowlist. Hermes sees no database credentials and needs no direct database
-access or MCP helper. Stored descriptions are treated as untrusted data.
+The desktop worker reads each absent target's newest strictly earlier sighting
+from Postgres using its canonical item UUID and photo capture-time cutoff.
+Historical fields come directly from that authoritative row. A successful empty
+lookup means `never_seen`; a query/connection failure means `unavailable`. No
+Hermes recall/acknowledgement call is made. Hermes remains responsible for vision,
+Gemini for narration, and Postgres for durable location memory. Agent conversation
+memory is not a source of sighting facts. Result version 2 remains compatible.
 
-Hermes must acknowledge the supplied status/detection ID. The worker rechecks the
-newest earlier Postgres record after the chat call, then constructs historical
-fields from that stored record. Empty successful lookups yield `never_seen` only
-when acknowledged; DB/query failures, invalid responses, invented IDs and chat
-failures yield `unavailable`. Agent conversation/personal memory is not a source
-of sighting facts. The version-2 result contract below remains unchanged.
+The desktop sleeps one second between completed polls; failed requests retain
+their 60-second backoff. Pi-request transcription overlaps image download,
+decoding and saved-scene preparation in separate threads/sessions. Fresh Hermes
+analysis starts after transcription so it receives the same final descriptive
+targets as before. This preserves target-guided matching; it is not target-free
+parallel STT/vision. Independent preparation and DB-only history remove waiting
+without changing image analysis inputs. Idle polling traffic is approximately
+three times the old frequency; provider/queue time still affects total latency.
 
 ## S3 result contract
 
@@ -195,3 +199,21 @@ even if earlier requests added them to the catalog. Explicit lists, descriptors
 and meaningful words such as yo-yo or plum remain supported. This is bounded
 English command parsing, without an extra AI call. Historical junk rows are not
 deleted and existing completed requests are not automatically reprocessed.
+
+
+Search answers and historical sightings display signed original camera photos
+with the selected target circle drawn by the web. Browser/legacy capture sources
+are `incoming/<id>.jpg`; S3-only Pi sources are `incoming/device/<id>.jpeg`.
+Postgres readers and last-seen evidence use the exact original `s3_key`. Annotated
+`results/<id>_result.jpg` files remain completion/debug artifacts and are not the
+displayed source. Keep originals private and retained for historical display;
+deleted originals cannot be recovered by removing boxes from an annotated JPEG.
+No desktop/Pi update or schema migration is required for this display change.
+
+
+While a fresh photo is being examined, web may expose a short Gemini/ElevenLabs
+waiting remark in `JobView.remark` with text, audio URL and timings. Its audio is
+served from `/api/jobs/<id>/remark` and held in web memory. Remarks are separate
+from final results, contain no claims about image contents, and are discarded
+when the final answer is ready. The final answer takes playback priority. The
+updated stage/frame and vapor transitions retain raw-photo target overlays.

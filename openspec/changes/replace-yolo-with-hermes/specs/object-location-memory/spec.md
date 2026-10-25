@@ -25,7 +25,7 @@ An item's last location SHALL change only upon a newer positive sighting. Absenc
 - **THEN** their previous desk sighting remains available and their lost count increments once
 
 ### Requirement: Retrieve historical evidence
-When a target is absent, the worker SHALL query local Postgres for the newest sighting strictly before capture time and supply at most one relevant record to Hermes over authenticated chat. Hermes SHALL require no database connection or MCP helper. The answer SHALL use stored location/time/photo/box facts, or report never seen only after a successful empty lookup. History SHALL survive restarts.
+When a target is absent, the worker SHALL query local Postgres for the newest sighting strictly before capture time and publish the authoritative stored evidence directly without a recall LLM call. Hermes SHALL require no database connection or MCP helper. The answer SHALL use stored location/time/photo/box facts, or report never seen only after a successful empty lookup. History SHALL survive restarts.
 
 #### Scenario: History survives restart
 - **WHEN** the agent restarts and a fresh photo lacks a wallet seen yesterday
@@ -38,25 +38,13 @@ An unavailable Postgres lookup SHALL be reported as history unavailable, not nev
 - **WHEN** a successful photo analysis finds no keys but Postgres is unreachable
 - **THEN** the reply states keys are not visible and history cannot currently be checked
 
-### Requirement: Validate worker-supplied historical evidence
-Hermes SHALL use only the bounded historical evidence supplied by the worker. The worker SHALL validate the returned status and detection ID against the canonical item, capture-time cutoff and authoritative newest earlier Postgres sighting. Published historical fields SHALL come from Postgres. Invented, mismatched, contradictory or malformed replies and failed history requests SHALL yield history unavailable.
+### Requirement: Use authoritative historical evidence
+The worker SHALL construct historical fields directly from the newest earlier Postgres sighting for the canonical item and capture-time cutoff. It SHALL NOT call a recall LLM to acknowledge those stored facts. Database failures SHALL yield unavailable history; successful empty queries SHALL yield never seen.
 
-#### Scenario: Historical sighting supplied through chat
+#### Scenario: Stored sighting without remote memory call
 - **WHEN** a wallet is absent now and local Postgres contains an earlier sighting
-- **THEN** the worker sends that sighting through the existing chat endpoint and publishes its stored photo/location/time only after validating the returned evidence ID
-
-#### Scenario: Invented evidence ID
-- **WHEN** Hermes returns a detection ID different from the supplied authoritative sighting
-- **THEN** the worker reports history unavailable without publishing invented historical evidence
+- **THEN** the worker publishes that stored photo/location/time directly without a chat acknowledgement
 
 #### Scenario: Successful empty local history
-- **WHEN** the local query succeeds with no earlier sighting and Hermes acknowledges that supplied outcome
-- **THEN** the result reports never seen
-
-#### Scenario: History endpoint fails
-- **WHEN** the current image analysis succeeds but the history chat request times out or returns malformed output
-- **THEN** history is unavailable and no historical facts are invented
-
-#### Scenario: No direct Hermes database access
-- **WHEN** Hermes runs on a different machine with no Postgres connection or MCP helper
-- **THEN** history lookup succeeds using local worker queries and the existing HTTPS chat connection
+- **WHEN** the local query succeeds with no earlier sighting
+- **THEN** history is never seen without making a recall request

@@ -45,9 +45,14 @@ async function mock(page: Page, job: JobView, device: boolean, blocked = true) {
   await page.emulateMedia({reducedMotion:"reduce"});
 }
 
+async function openAsk(page: Page) {
+  await page.goto("/");
+  await expect(page.getByTestId("prompt")).toHaveAttribute("data-live", "true");
+}
+
 test("Pi request arrives in typing mode and shows the marked historical image", async ({page}) => {
   await mock(page, answer(), true);
-  await page.goto("/");
+  await openAsk(page);
   await expect(page.getByRole("button", {name:"How to ask: Type it"})).toBeVisible();
   await expect(page.getByTestId("answer")).toContainText("Where are my keys?", {timeout:15_000});
   await expect(page.getByText("Press play to hear the answer.")).toBeVisible();
@@ -64,7 +69,7 @@ test("Pi request arrives in typing mode and shows the marked historical image", 
 for (const history of ["never_seen", "unavailable"] as const) {
   test(`typed request distinguishes ${history}`, async ({page}) => {
     await mock(page, answer("web-job", history), false);
-    await page.goto("/");
+    await openAsk(page);
     const enable = page.getByRole("button", {name:"Enable audio for camera replies"});
     await enable.click();
     await expect(enable).toHaveCount(0);
@@ -79,7 +84,7 @@ for (const history of ["never_seen", "unavailable"] as const) {
 
 test("blocked voice retains text and offers explicit replay", async ({page}) => {
   await mock(page, answer(), true);
-  await page.goto("/");
+  await openAsk(page);
   await page.getByRole("button", {name:"Enable audio for camera replies"}).click();
   await expect(page.getByTestId("answer")).toContainText("last seen on the desk");
   await page.getByRole("button", {name:"Play the reply"}).click();
@@ -95,7 +100,7 @@ test("found photo uses its own normalized mark without fabricated confidence", a
   job.lastSighting = null;
   job.historyStatus = "not_needed";
   await mock(page, job, true);
-  await page.goto("/");
+  await openAsk(page);
   await expect(page.getByTestId("answer")).toContainText("Where are my keys?");
   await page.getByRole("button", {name:"Show the camera's photo"}).click();
   await expect(page.getByAltText("Camera photo with the keys circled")).toHaveAttribute("src", "/fresh.jpg");
@@ -108,7 +113,7 @@ test("a second Pi request waits until the active reply is dismissed", async ({pa
   await mock(page, job, true);
   let discoveries = 0;
   page.on("request", r => { if (r.url().includes("/api/jobs/latest")) discoveries++; });
-  await page.goto("/");
+  await openAsk(page);
   await expect(page.getByTestId("answer")).toContainText("Where are my keys?");
   job.id = "second-pi-job";
   job.transcript = "Where is my wallet?";
@@ -132,7 +137,7 @@ test("a Pi result uploaded before web opened is not replayed", async ({page}) =>
     since = new URL(route.request().url()).searchParams.get("since")!;
     return route.fulfill({status:204});
   });
-  await page.goto("/");
+  await openAsk(page);
   await polled;
   expect(Date.parse(since)).toBeGreaterThan(Date.now() - 60_000);
   await expect(page.getByTestId("answer")).toHaveCount(0);
@@ -148,7 +153,7 @@ test("new bottle category displays current location and offers spoken reply", as
     locationDescription:"On the desk beside the notebook",snapshot:{id:"fresh",url:"/fresh.jpg",width:1280,height:720}};
   job.lastSighting = null; job.historyStatus = "not_needed";
   await mock(page,job,false);
-  await page.goto("/");
+  await openAsk(page);
   await page.getByPlaceholder("Where are my keys?").fill(job.transcript);
   await page.getByRole("button",{name:"Send question"}).click();
   await expect(page.getByTestId("answer")).toContainText("Your bottle is on the desk");

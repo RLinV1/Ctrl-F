@@ -1,8 +1,9 @@
-"""The supplied-history adapter and processing path with isolated real Postgres."""
+"""Direct historical lookup and processing with isolated real Postgres."""
 import json
 from datetime import UTC, datetime
 
 import httpx
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,17 +24,15 @@ def test_local_history_alias_retry_and_fresh_sessions(session):
     save_result(session, s3_key="incoming/earlier.jpg", taken_at=first, width=100, height=80,
                 boxes=[Box("wallet", None, {"x":.1,"y":.2,"w":.2,"h":.2}, "Beside the mug")])
     bind = session.get_bind()
-    prompts = []
+    analyses = []
     def handler(request):
         content = json.loads(request.content)["messages"][-1]["content"]
         if isinstance(content, list):
             photo = json.loads(content[0]["text"])["photo"]
+            analyses.append(photo)
             answer = {"status":"complete", "photo":photo, "observations":[]}
         else:
-            prompt = json.loads(content); prompts.append(prompt)
-            assert prompt["sighting"]["location_description"] == "Beside the mug"
-            assert prompt["sighting"]["seen_at"] == first.isoformat()
-            answer = {"status":"available", "detection_id":prompt["sighting"]["detection_id"]}
+            pytest.fail("History must not make a Hermes round trip")
         return httpx.Response(200, json={"choices":[{"finish_reason":"stop","message":{"content":json.dumps(answer)}}]})
     def fresh_agent():
         return HermesClient(HermesConfig("http://127.0.0.1:8642/v1", "mock"),transport=httpx.MockTransport(handler))
@@ -46,7 +45,7 @@ def test_local_history_alias_retry_and_fresh_sessions(session):
         assert check.scalar(select(func.count()).select_from(Photo)) == 2
         assert check.scalar(select(func.count()).select_from(Detection)) == 1
         assert check.scalar(select(Item.lost_count).where(Item.name == "wallet")) == 1
-    assert len(prompts) == 2
+    assert len(analyses) == 1
 
 
 def test_new_categories_persist_and_recall_after_restart_without_reanalysis(session):
@@ -63,8 +62,7 @@ def test_new_categories_persist_and_recall_after_restart_without_reanalysis(sess
                              "location_description":"On the desk beside the lamp"} for name in ("bottle","notebook")] if visible else []
             answer = {"status":"complete","photo":prompt["photo"],"observations":observations}
         else:
-            prompt = json.loads(content)
-            answer = {"status":"available","detection_id":prompt["sighting"]["detection_id"]} if prompt["sighting"] else {"status":"never_seen"}
+            pytest.fail("History must not make a Hermes round trip")
         return httpx.Response(200,json={"choices":[{"finish_reason":"stop","message":{"content":json.dumps(answer)}}]})
     def agent():
         return HermesClient(HermesConfig("http://127.0.0.1:8642/v1","mock"),transport=httpx.MockTransport(handler))

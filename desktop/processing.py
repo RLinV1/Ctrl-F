@@ -1,5 +1,6 @@
 """Photo processing independent of the S3 loop and concrete Hermes transport."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -12,36 +13,58 @@ from hermes import PhotoContext, Observation, Scene
 from targets import item_name, MAX_TARGETS
 
 
-def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str], agent, sessions) -> tuple[dict, bytes]:
-    """Validate, persist, and publish factual results; all writes stay application-owned."""
+@dataclass(frozen=True)
+class PreparedPhoto:
+    photo: PhotoContext
+    pixels: Image.Image
+    scene: Scene | None
+
+
+def prepare_photo(image: bytes, key: str, taken_at: datetime, sessions) -> PreparedPhoto:
+    """Decode the image and detach any persisted scene using a private session."""
     import io
 
     with Image.open(io.BytesIO(image)) as source:
         source.load()
-        width, height = source.size
-        annotated = source.convert("RGB")
-    photo = PhotoContext(key, taken_at, width, height)
+        photo = PhotoContext(key, taken_at, *source.size)
+        pixels = source.convert("RGB")
+    with sessions() as session:
+        existing = session.scalar(select(Photo).where(Photo.s3_key == key))
+        if existing:
+            photo = PhotoContext(key, existing.taken_at, existing.width, existing.height)
+            saved = session.scalars(select(Detection).where(Detection.photo_id == existing.id)).all()
+            scene = Scene(photo, existing.model_version or "legacy", tuple(
+                Observation(d.label, d.bbox, d.location_description or "Recorded position in the photo", d.confidence)
+                for d in saved if d.item_id is not None))
+        else:
+            scene = None
+    return PreparedPhoto(photo, pixels, scene)
+
+
+def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str], agent, sessions,
+                  *, prepared: PreparedPhoto | None = None) -> tuple[dict, bytes]:
+    """Validate, persist, and publish factual results; all writes stay application-owned."""
+    import io
+
+    prepared = prepared if prepared is not None else prepare_photo(image, key, taken_at, sessions)
+    photo, scene = prepared.photo, prepared.scene
+    if photo.key != key:
+        raise ValueError("Prepared photo key does not match request")
+    taken_at, width, height = photo.taken_at, photo.width, photo.height
+    annotated = prepared.pixels.copy()
+    # Resolve targets/catalog after transcription, retaining target-guided vision
+    # and any aliases registered while independent image preparation was running.
     with sessions() as session:
         items = session.scalars(select(Item).order_by(Item.name)).all()
         catalog = {i.name: list(i.aliases) for i in items}
-        ids = {i.name: i.id for i in items}
     aliases = {alias.lower(): name for name, names in catalog.items() for alias in [name, *names]}
     if len(targets) > MAX_TARGETS:
         raise ValueError("Too many requested items")
     targets = list(dict.fromkeys(aliases.get(item_name(t), item_name(t)) for t in targets))
-    # A DB commit can succeed before S3 publication fails. Rebuild that exact
-    # persisted scene on retry, instead of publishing a different agent answer.
-    with sessions() as session:
-        existing = session.scalar(select(Photo).where(Photo.s3_key == key))
-        saved_detections = session.scalars(select(Detection).where(Detection.photo_id == existing.id)).all() if existing else []
-        if existing:
-            photo = PhotoContext(key, existing.taken_at, existing.width, existing.height)
-            taken_at = existing.taken_at
-            scene = Scene(photo, existing.model_version or "legacy", tuple(
-                Observation(aliases.get(d.label.lower(), d.label), d.bbox, d.location_description or "Recorded position in the photo", d.confidence)
-                for d in saved_detections if d.item_id is not None))
-        else:
-            scene = None
+    if scene is not None:
+        scene = Scene(photo, scene.model, tuple(
+            Observation(aliases.get(o.item.lower(), o.item), o.bbox, o.location_description, o.confidence)
+            for o in scene.observations))
     if scene is None:
         scene = agent.analyze(image, photo, catalog, targets)
     # Register only bounded requested/validated observed categories, then load IDs
@@ -68,18 +91,11 @@ def process_photo(image: bytes, key: str, taken_at: datetime, targets: list[str]
         if not matches:
             try:
                 with sessions() as session:
-                    supplied = repo.lookup_last_sighting(session, ids[target], taken_at)
-                recalled = agent.recall(str(ids[target]), taken_at, supplied)
-                # Recheck after the network call in case an older photo arrived meanwhile.
-                with sessions() as session:
                     evidence = repo.lookup_last_sighting(session, ids[target], taken_at)
-                # Agent-supplied evidence must match the authoritative newest DB record.
-                if recalled.get("status") == "available" and evidence and recalled.get("detection_id") == evidence["detection_id"]:
+                if evidence is not None:
                     result.update(history_status="available", last_sighting=evidence)
-                elif recalled.get("status") == "never_seen" and evidence is None:
-                    result["history_status"] = "never_seen"
                 else:
-                    result["history_status"] = "unavailable"
+                    result["history_status"] = "never_seen"
             except Exception:
                 result["history_status"] = "unavailable"
         results.append(result)

@@ -165,3 +165,11 @@ updating/restarting the single managed worker. No new DB migration is introduced
 Requests and validated scene names may introduce new bounded item categories;
 the existing catalog supplies naming/alias hints. Gemini remains the narrator.
 The scene-analysis and memory deltas above are reconciled with that behavior.
+
+
+## Worker latency follow-up
+
+`reduce-worker-latency` supersedes the supplied-history acknowledgement above.
+The active worker now publishes authoritative Postgres evidence directly, without
+Hermes recall. Polling uses one second; independent image preparation overlaps
+transcription, while fresh vision retains final targets to preserve accuracy.
