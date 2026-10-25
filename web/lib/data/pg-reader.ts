@@ -73,7 +73,7 @@ function sighting(r: SightingRow): PgSighting | null {
 
 /** Columns every sighting query returns, from detections d, photos p and zones z. */
 const SIGHTING = `d.id::text AS det_id, d.label, d.confidence, d.location_description, d.bbox, z.name AS zone, d.seen_at,
-  coalesce(p.annotated_key, p.s3_key) AS key, p.width, p.height`;
+  p.s3_key AS key, p.width, p.height`;
 
 /** Every tracked item with its newest sighting (the one cached in items.last_photo_id). */
 export async function pgItems(): Promise<PgItem[]> {
@@ -109,7 +109,7 @@ export async function pgSightings(name: string, limit: number, before?: string):
 export async function pgResults(limit: number): Promise<PgResult[]> {
   const { rows } = await pool().query(
     `SELECT coalesce(j.id, p.id)::text AS id, p.taken_at, j.transcript, j.targets, j.found,
-            coalesce(p.annotated_key, p.s3_key) AS snapshot_key, p.width AS photo_width, p.height AS photo_height,
+            p.s3_key AS snapshot_key, p.width AS photo_width, p.height AS photo_height,
             ${SIGHTING}
        FROM photos p
        LEFT JOIN jobs j ON j.id = p.job_id

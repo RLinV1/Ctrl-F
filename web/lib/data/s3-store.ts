@@ -80,7 +80,11 @@ type StoredResult = { id: string; at: string; result: Result };
 
 export const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const toBox = (d: Detection): Box => ({ x: d.box[0], y: d.box[1], w: d.box[2] - d.box[0], h: d.box[3] - d.box[1] });
+// Annotated output remains the worker completion marker, not the displayed photo.
 const photoKey = (id: string) => `results/${id}_result.jpg`;
+const originalPhotoKey = (id: string, result: Result) => result.source === "device"
+  ? `incoming/device/${id}.jpeg`
+  : `incoming/${id}.jpg`;
 const resultKey = (id: string) => `results/${id}_result.json`;
 
 export class S3Store implements Store {
@@ -189,7 +193,7 @@ export class S3Store implements Store {
       confidence: d.conf,
       locationDescription: d.location_description,
       box: toBox(d),
-      snapshotKey: photoKey(id),
+      snapshotKey: originalPhotoKey(id, result),
       width: result.width ?? DEFAULT_SIZE.width,
       height: result.height ?? DEFAULT_SIZE.height,
     };
@@ -405,7 +409,7 @@ export class S3Store implements Store {
       found: result.status === "found" ? true : result.status === "not_visible" ? false : null, // null: no item was searched for
       replyText: text,
       replyTimings: null, // arrive with the audio
-      photo: { key: photoKey(rec.id), seenAt: result.captured_at ?? now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
+      photo: { key: originalPhotoKey(rec.id, result), seenAt: result.captured_at ?? now, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
       match,
       lastSighting: result.status === "not_visible" ? (earlier ?? null) : null,
     };
@@ -442,7 +446,7 @@ export class S3Store implements Store {
   private historical(s: HistoryEvidence): Stored {
     return { id: s.detection_id, seenAt: s.seen_at, label: s.label, confidence: s.confidence,
       locationDescription: s.location_description, box: s.bbox, zone: s.zone,
-      snapshotKey: s.annotated_key || s.s3_key, width: s.width, height: s.height };
+      snapshotKey: s.s3_key, width: s.width, height: s.height };
   }
 
   private async sighting(s: Stored): Promise<Sighting> {
@@ -516,7 +520,7 @@ export class S3Store implements Store {
         unsupported: null,
         target: result.target,
         found: result.status === "found",
-        photo: { key: photoKey(id), seenAt: at, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
+        photo: { key: originalPhotoKey(id, result), seenAt: at, width: result.width ?? DEFAULT_SIZE.width, height: result.height ?? DEFAULT_SIZE.height },
         match: result.status === "found" && first ? this.stored(id, at, result, first, result.target ?? first.name) : null,
       };
     });

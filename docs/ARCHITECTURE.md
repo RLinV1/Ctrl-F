@@ -195,3 +195,13 @@ even if earlier requests added them to the catalog. Explicit lists, descriptors
 and meaningful words such as yo-yo or plum remain supported. This is bounded
 English command parsing, without an extra AI call. Historical junk rows are not
 deleted and existing completed requests are not automatically reprocessed.
+
+
+Search answers and historical sightings display signed original camera photos
+with the selected target circle drawn by the web. Browser/legacy capture sources
+are `incoming/<id>.jpg`; S3-only Pi sources are `incoming/device/<id>.jpeg`.
+Postgres readers and last-seen evidence use the exact original `s3_key`. Annotated
+`results/<id>_result.jpg` files remain completion/debug artifacts and are not the
+displayed source. Keep originals private and retained for historical display;
+deleted originals cannot be recovered by removing boxes from an annotated JPEG.
+No desktop/Pi update or schema migration is required for this display change.
