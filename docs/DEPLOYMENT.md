@@ -224,3 +224,20 @@ Verification: 146 isolated-Postgres desktop tests passed (zero skips, applicatio
 counts unchanged), 70 Playwright tests, 25 web unit tests, TypeScript, targeted
 lint and strict OpenSpec passed. Desktop service is active with zero automatic
 restarts and unchanged env; web HTTP 200. Existing checkpoints remain available.
+
+
+## Conversational target parser correction
+
+PR #35 deployed `415292b` to the desktop worker and local web. Both paths clean
+leading greetings, hesitation pauses and standalone determiners without a new
+AI call. The deployed Python parser was verified with the live catalog:
+“Yo, where my AirPods at?” → airpods; “Where is my, uh, water bottle?” → water
+bottle; descriptive bottle/phone requests retain both targets. Existing junk
+catalog rows were not deleted or replayed.
+
+Validation: 168 isolated-Postgres tests passed with zero skips and unchanged
+application counts; 116 Playwright tests passed across desktop/mobile. TypeScript,
+targeted lint and strict OpenSpec passed. Worker active/running, zero automatic
+restarts, env unchanged; local web HTTP 200. Private previous HEAD/config:
+`~/.local/state/ctrlf-conversational-targets/verification/` on the desktop. Existing
+rollback checkpoints remain. The Pi and schema need no changes.
