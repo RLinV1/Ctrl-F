@@ -81,7 +81,7 @@ export async function getLatestJob(store: Store, url: URL) {
   if (Number.isNaN(Date.parse(since))) return error("since must be an ISO time", 400);
   const id = await store.latestJobId(source, since, url.searchParams.get("afterId") ?? undefined);
   if (!id) return new Response(null, { status: 204 });
-  const job = await store.getJob(id);
+  const job = await store.getJob(id, false);
   return job ? json({ id, createdAt: job.createdAt }) : new Response(null, { status: 204 });
 }
 

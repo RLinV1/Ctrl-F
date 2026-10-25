@@ -7,7 +7,7 @@ Connects browser and Pi spoken requests to the same search experience, with Vict
 ## ADDED Requirements
 
 ### Requirement: Shared spoken request pipeline
-Browser requests SHALL record from the browser microphone and Pi-button requests from the webcam microphone. Both SHALL use ElevenLabs transcription, Hermes image analysis and memory lookup, Gemini Victorian narration, and ElevenLabs speech output. Existing typed requests SHALL remain usable.
+Browser requests SHALL record from the browser microphone and Pi-button requests from the webcam microphone. Browser audio SHALL be transcribed on web and Pi audio on desktop, both using ElevenLabs. Both SHALL use Hermes image analysis and memory lookup, Gemini Victorian narration, and ElevenLabs speech output. Existing typed requests SHALL remain usable.
 
 #### Scenario: Browser voice request
 - **WHEN** the user records "Where are my keys?" in the web app
@@ -40,3 +40,10 @@ Gemini SHALL word current and historical locations using validated facts, preser
 #### Scenario: Last-seen reply
 - **WHEN** the supplied result says keys are absent now and were on the desk at 14:35
 - **THEN** the reply states that they are not currently visible and were last seen on the desk at 14:35
+
+### Requirement: Discover durable Pi requests
+Web SHALL discover Pi-origin requests and reconstruct their transcript and result from S3 without an earlier HTTP submission from the Pi. Requests uploaded while web is offline SHALL remain discoverable after web starts. Existing web-origin recording and typing flows SHALL remain usable.
+
+#### Scenario: Web restarts after Pi upload
+- **WHEN** a complete Pi request and result exist in S3 and web restarts
+- **THEN** the open browser can discover that request and hear its narrated result

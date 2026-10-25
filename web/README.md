@@ -52,7 +52,7 @@ Hermes key; the desktop worker alone calls Hermes. Use HTTPS for microphone
 access when opening the app from another device.
 
 On the Ask page, web recordings use the browser mic. Pi-button recordings use
-the webcam mic and arrive automatically regardless of selected input mode. Keep
+the webcam mic and are discovered from S3 ready manifests automatically regardless of selected input mode. Keep
 one browser open, click Enable audio, and use Play if autoplay is blocked. Replies
 are serialized and automatically played once per job per browser session. The
 camera photo for a last-seen answer is the historical photo with its original box.
@@ -76,3 +76,14 @@ The test server uses port 3100 with paid keys disabled. It uses installed Chrome
 when available, otherwise Playwright Chromium. Stop another `next dev` process
 in this checkout before running tests. See `docs/DEPLOYMENT.md` at the repo root
 for the hardware acceptance checklist.
+
+
+For the S3-only Pi revision, deploy the matching web code as well as the desktop
+worker. Pi requires no web URL or Pi token. The legacy HTTP device intake route
+remains for compatibility, but the hardware does not use it. Web needs read/list
+access to ready manifests under `incoming/device/` and result objects. A new web
+process reconstructs device jobs/transcripts from S3; Gemini narration and
+ElevenLabs TTS remain on web. Browser recordings still use web STT and S3 jobs/.
+A fresh browser session discovers retained device history; its session cursor
+prevents replay in that session. Configure desired private audio/history retention
+operationally; this deployment does not delete stored recordings automatically.

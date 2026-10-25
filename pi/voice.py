@@ -8,19 +8,18 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-
-import httpx
+from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
 
 class VoiceButton:
-    def __init__(self, device: str, web_base_url: str, token: str, maximum: float = 15) -> None:
-        if not device or not token or not web_base_url.startswith(("http://", "https://")):
-            raise ValueError("PI_AUDIO_DEVICE, WEB_BASE_URL and PI_JOB_TOKEN are required")
+    def __init__(self, device: str, submit: Callable[[bytes], object], maximum: float = 15) -> None:
+        if not device or not callable(submit):
+            raise ValueError("PI_AUDIO_DEVICE and an upload queue are required")
         if not math.isfinite(maximum) or not 0.5 <= maximum <= 60:
             raise ValueError("PI_RECORD_MAX_SECONDS must be between 0.5 and 60")
-        self.device, self.url, self.token, self.maximum = device, web_base_url.rstrip("/"), token, maximum
+        self.device, self.submit, self.maximum = device, submit, maximum
         self._lock = threading.Lock()
         self._released = threading.Event()
         self._thread: threading.Thread | None = None
@@ -40,13 +39,9 @@ class VoiceButton:
             with tempfile.TemporaryDirectory(prefix="ctrlf-audio-") as directory:
                 audio = self.record(Path(directory))
                 if audio is not None:
-                    with httpx.Client(timeout=30, follow_redirects=False) as client:
-                        response = client.post(self.url + "/api/device/jobs", content=audio,
-                                               headers={"Authorization": "Bearer " + self.token,
-                                                        "content-type": "audio/ogg"})
-                        response.raise_for_status()
+                    self.submit(audio)
         except Exception:
-            log.warning("Microphone recording or device request failed; check audio device and web configuration")
+            log.warning("Microphone recording or local queue failed; check audio device and spool permissions")
         finally:
             self._lock.release()
 

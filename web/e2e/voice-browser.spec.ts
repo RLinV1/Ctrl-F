@@ -120,3 +120,19 @@ test("a second Pi request waits until the active reply is dismissed", async ({pa
   await page.getByRole("button", {name:"Show the camera's photo"}).click();
   await expect(page.getByTestId("answer")).toContainText("Where is my wallet?");
 });
+
+
+test("a Pi result uploaded before web opened is still presented", async ({page}) => {
+  const job = answer();
+  const created = "2026-01-01T10:00:00Z";
+  job.createdAt = created;
+  await mock(page,job,true);
+  await page.route("**/api/jobs/latest?**", route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("afterId") === job.id || Date.parse(url.searchParams.get("since")!) >= Date.parse(created)) return route.fulfill({status:204});
+    return route.fulfill({json:{id:job.id,createdAt:created}});
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("answer")).toContainText("Where are my keys?");
+  await expect(page.getByTestId("answer")).toContainText("last seen on the desk");
+});

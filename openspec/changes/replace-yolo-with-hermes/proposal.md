@@ -8,6 +8,7 @@ Ctrl-F must find belongings from a fresh camera photo and remember their previou
 
 - **BREAKING**: Replace the desktop's YOLO inference path with a Nous Research Hermes Agent adapter backed by a configured vision provider. No YOLO weights or training are required for the active search pipeline (F4, F5).
 - Analyze every visible tracked item on every search photo, save validated observations in Postgres, and let Hermes retrieve prior sightings through a narrow application tool (F6, F7, F9).
+- **Revised Pi transport**: Pi-button requests upload private Ogg audio, a fresh JPEG, and a ready manifest directly to S3. Desktop runs ElevenLabs STT for these requests; web discovers them from S3 and retains Gemini narration and ElevenLabs TTS. Pi requires no web URL or token.
 - Complete the two audio entry paths: browser microphone for web requests; Logitech USB webcam microphone for Pi-button requests. Both lead to a fresh Pi camera capture (F1, F3).
 - Keep ElevenLabs STT/TTS and Gemini Victorian narration. Give the narrator grounded current or historical location facts, including time, and show the corresponding marked photo (F8, F9).
 - Have the single open browser follow Pi-button requests and play their replies, with an explicit audio-enable/replay fallback.
@@ -32,7 +33,7 @@ None in the main spec inventory. This proposal supersedes conflicting proposed b
 
 - Desktop: `server.py`, analysis adapter, Postgres repository and Alembic migrations, runtime dependencies.
 - Pi: `capture.py`, microphone/device configuration, bounded recording and physical-button handling.
-- Web: existing `/api/device/jobs`, `/api/jobs/latest`, result types, Postgres reader, narrator facts, Ask screen and browser audio handling. Reuse the existing S3 job relay instead of adding inbound Pi/desktop access.
+- Web: durable S3 device discovery, existing `/api/jobs/latest`, result types, Postgres reader, narrator facts, Ask screen and browser audio handling. Reuse the existing S3 job relay instead of adding inbound Pi/desktop access.
 - Private S3 photos remain private; Hermes receives image bytes or a short-lived signed URL. Agent access to Postgres is through restricted tools.
 - Docs: PRD, architecture, tech stack, training status, component run instructions, `.env.example`, and `openspec/config.yaml`.
 

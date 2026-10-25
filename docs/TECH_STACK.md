@@ -13,7 +13,7 @@ Status column: **Decided** = user stated it. **Default** = our recommendation, c
 | Object storage | SeaweedFS (S3 API) in Docker | Default | User's first idea. Any S3-compatible store works (MinIO, or R2 later) because code uses the S3 API only. |
 | Desktop service | Python 3.11+ polling worker | Default | Python S3 worker calling Hermes HTTP API and persisting Postgres sightings; no GPU required. |
 | Pi service | Python, fswebcam, ALSA, ffmpeg, gpiozero | Decided | Logitech USB webcam camera/mic and Grove button; outbound S3 relay. |
-| Pi <-> web | POST audio to `/api/device/jobs` | Decided | Pi bearer token; browser requests keep using `/api/jobs`. |
+| Pi transport | S3 only | Decided | Pi audio/photo ready manifests; no web URL/token. Browser requests retain jobs/ capture relay. |
 | Pi <-> processing worker | Private S3 `jobs/`, `incoming/`, `results/` relay | Decided | Retains the actual dev transport; no inbound Pi/worker calls. |
 | Audio in/out | Browser microphone or Logitech webcam mic; browser playback | Decided | Hold the Pi button for webcam audio or use browser `MediaRecorder`. `getUserMedia` works on `http://localhost`. Opening the site from another device needs HTTPS. |
 | LLM | Google Gemini | Decided | Victorian narration; existing web target-picking fallback remains. Image analysis/memory use Hermes. |
@@ -43,7 +43,7 @@ S3_BUCKET
 S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY
 YOLO_WEIGHTS_PATH         # legacy training tools only
-WEB_BASE_URL              # Pi submits audio here, e.g. https://web.example
+WEB_BASE_URL              # legacy compatibility only, e.g. https://web.example
 PI_JOB_TOKEN              # bearer token for /api/device/jobs
 DESKTOP_BASE_URL          # legacy only; current capture relay uses S3
 UI_PASSWORD               # single-user login for the web UI
@@ -81,6 +81,7 @@ these names in the appropriate host's env file (see `.env.example`):
 - `MEMORY_DATABASE_URL`: SELECT-only connection on the Hermes MCP helper host.
 - `PI_AUDIO_DEVICE`: Logitech ALSA device name, configured on the Pi.
 - `PI_RECORD_MAX_SECONDS`: bounded recording duration, default 15 (0.5–60).
+- `PI_SPOOL_DIR`: optional private local request queue; default `~/.local/state/ctrlf/requests`.
 - `CAPTURE_BUTTON_PIN`: Grove GPIO pin, default 5.
 
 Hermes server settings (`API_SERVER_ENABLED`, `API_SERVER_KEY`, `API_SERVER_HOST`,

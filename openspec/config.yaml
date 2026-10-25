@@ -7,7 +7,7 @@ context: |
   Components: web/ (Next.js on Vercel), desktop/ (Python S3 polling worker, Hermes HTTP adapter), pi/ (Python, Logitech webcam camera/mic + relay; browser mic for web requests).
   Stack: Next.js + TypeScript, Vercel, GoDaddy domain, Gemini (Victorian narration and retained target-picking fallback; no image analysis), ElevenLabs, Hermes Agent (configured vision provider, read-only Postgres MCP history tool),
   Postgres, S3-compatible storage (R2 default; SeaweedFS possible).
-  Constraints: Vercel never calls the desktop or Pi (Pi polls S3 jobs/ and uploads incoming/ photos; processing worker polls photos and writes Postgres/results; device audio is posted outbound to web).
+  Constraints: Vercel never calls the desktop or Pi (Pi polls S3 jobs/ and uploads incoming/ photos; processing worker polls photos and writes Postgres/results; device audio/photos/ready manifests are uploaded to S3; desktop transcribes Pi audio).
   Snapshots are private (signed URLs). No secrets in the repo.
   Conventions: Conventional Commits, branches named type/short-slug, no Co-Authored-By trailers.
 

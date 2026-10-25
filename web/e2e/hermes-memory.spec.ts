@@ -14,8 +14,7 @@ const result: Result = { version: 2, status: "not_visible", target: "keys", matc
   width: 1280, height: 720, captured_at: "2026-10-25T10:00:00Z", history_status: "available", last_sighting: evidence };
 
 // This integration uses real handlers/store and mocks only the external boundaries.
-function fixture() {
-  const objects = new Map<string, string>();
+function fixture(objects = new Map<string, string>()) {
   const client = { send: async (command: unknown) => {
     const c = command as {input: {Key?: string; Prefix?: string; Body?: string}};
     if (command instanceof ListObjectsV2Command) return {Contents: [...objects.keys()].filter(k => k.startsWith(c.input.Prefix!))
@@ -97,4 +96,42 @@ test("discovery cursor does not skip jobs sharing a timestamp", async () => {
   const after = await getLatestJob(store, new URL(`http://test/api/jobs/latest?source=device&since=${one.createdAt}&afterId=${one.id}`));
   const two = await after.json();
   expect(new Set([one.id,two.id])).toEqual(new Set([first.id,second.id]));
+});
+
+
+const deviceRequestId = "6c5cd856-75f5-4a09-824d-452a3cc6ce90";
+function readyRequest() {
+  return {version:1, source:"device", id:deviceRequestId, created_at:"2026-01-01T10:00:00+00:00", captured_at:"2026-01-01T10:00:02+00:00",
+    audio_key:`incoming/device/${deviceRequestId}.ogg`, image_key:`incoming/device/${deviceRequestId}.jpeg`,audio_content_type:"audio/ogg"};
+}
+
+test("S3-only Pi request is discoverable without HTTP submission after web restart", async () => {
+  const objects = new Map<string,string>();
+  const manifest = readyRequest();
+  objects.set(`incoming/device/${deviceRequestId}.ready.json`,JSON.stringify(manifest));
+  objects.set(`results/${deviceRequestId}_result.json`,JSON.stringify({...result,source:"device",transcript:"Where are my keys?",targets:["keys"],created_at:manifest.created_at}));
+  objects.set(`results/${deviceRequestId}_result.jpg`,"mock image");
+  for (let restart = 0; restart < 2; restart++) {
+    const {store} = fixture(objects);
+    expect(await store.latestJobId("device",new Date(0).toISOString())).toBe(deviceRequestId);
+    const done = await store.getJob(deviceRequestId);
+    expect(done?.transcript).toBe("Where are my keys?");
+    expect(done?.lastSighting?.snapshot.url).toContain("old-photo_result.jpg");
+    expect(done?.replyText).toContain("desk beside the red mug");
+  }
+});
+
+test("raw uploads without a valid ready manifest are not discovered", async () => {
+  const {store,objects} = fixture();
+  objects.set(`incoming/device/${deviceRequestId}.ogg`,"raw audio");
+  objects.set(`incoming/device/${deviceRequestId}.jpeg`,"image");
+  expect(await store.latestJobId("device",new Date(0).toISOString())).toBeNull();
+});
+
+test("newly discovered ready request shows processing before a result exists", async () => {
+  const {store,objects} = fixture();
+  objects.set(`incoming/device/${deviceRequestId}.ready.json`,JSON.stringify(readyRequest()));
+  const job = await store.getJob(deviceRequestId);
+  expect(job?.status).toBe("claimed");
+  expect(job?.found).toBeNull();
 });

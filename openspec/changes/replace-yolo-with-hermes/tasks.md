@@ -24,7 +24,7 @@ Each group is a separate reviewable milestone/PR. Keep the current runtime usabl
 ## 4. Logitech microphone and Pi button
 
 - [x] 4.1 Add bounded hold-to-record/release-to-submit behavior using configurable `PI_AUDIO_DEVICE`, ALSA capture and supported Ogg encoding; verify debounce, short clips, maximum duration, missing device and cleanup using mocked subprocess/GPIO pytest tests.
-- [x] 4.2 Post recordings through the existing bearer-authenticated device route and continue S3 claim/capture with one camera lock; verify no duplicate audio submissions/captures under repeated edges and concurrent web jobs with pytest.
+- [x] 4.2 Upload Pi audio and an immediately captured photo through S3 with a ready marker and persistent local retry spool; verify marker ordering, retry IDs, duplicate button edges, and serialized camera access with pytest.
 - [ ] 4.3 Preserve explicit training-photo CLI mode, document OS packages, ALSA discovery, device selection, recording limits and new env names in `.env.example`, `docs/TECH_STACK.md` and Pi instructions; verify actual Logitech audio plus photo capture on the Pi and record the manual result.
 
 ## 5. Narration and historical photo presentation
@@ -60,3 +60,21 @@ record; 2.1–2.4 need the isolated Postgres migration/repository/restart tests 
 real MCP evidence lookup; 4.3 and 7.2 need Logitech/GPIO and full real-host tests.
 Do not mark these done from skipped tests or the API schema-only smoke result.
 See `docs/DEPLOYMENT.md`. No real deployment database has been migrated here.
+
+
+## 8. S3-only Pi voice revision (user approved)
+
+- [x] 8.1 Replace HTTP voice submission with the local spool and S3-only ready protocol; verify partial uploads, retries and no dependency on WEB_BASE_URL/PI_JOB_TOKEN using Pi pytest tests.
+- [x] 8.2 Add desktop ElevenLabs STT for ready device requests, canonical alias matching and transcript reuse; verify incomplete uploads, STT failures, duplicate/retry handling and result metadata with mocked pytest tests.
+- [x] 8.3 Discover device jobs from S3 and reconstruct after web restart, retaining Gemini/TTS; verify offline uploads, server restart, browser cursor and legacy browser requests using Playwright.
+- [x] 8.4 Update architecture, env/deployment instructions and superseded assumptions; verify strict OpenSpec validation and cross-component protocol fixtures.
+- [x] 8.5 Deploy the tested revision on the actual Pi without web configuration, verify its service and hardware, and supply the precise desktop/web redeployment handoff; record which live end-to-end checks still await those hosts.
+
+
+S3-only Pi deployment evidence: revision d073208 installed on raymond's Pi;
+14/14 Pi tests passed on Python 3.13 with system GPIO bindings. User service
+`ctrlf-pi.service` is active, enabled, has zero restarts, and lingering is enabled.
+Its EnvironmentFile is `/home/raymond/.ctrlf.env`, preserved with a private backup.
+The Brio 101 microphone, JPEG capture, GPIO 5 and S3 listing checks passed. A real
+physical-button upload and the full spoken response remain live acceptance until
+the matching desktop/web revisions are deployed; task 7.2 stays open.

@@ -3,7 +3,7 @@
 The worker polls private S3 photos, sends them to your existing Hermes API, saves
 all tracked-object sightings to Postgres, then writes result JSON and an annotated
 JPEG to S3. The Next.js server continues to perform ElevenLabs transcription,
-Gemini narration and ElevenLabs speech. The worker needs no YOLO weights or GPU.
+Gemini narration and ElevenLabs speech. Pi-origin audio is transcribed by this worker. The worker needs no YOLO weights or GPU.
 
 Run these steps on the **deployment machines**, not the coding workstation.
 
@@ -16,8 +16,8 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r desktop/requirements.txt
 ```
 
-Fill the root `.env` using `.env.example`. Set `DATABASE_URL` and your private S3
-credentials. Back up an existing DB, then apply the additive migration and seed
+Fill the root `.env` using `.env.example`. Set `DATABASE_URL`, your private S3
+credentials, and `ELEVENLABS_API_KEY` for Pi recording transcription. Back up an existing DB, then apply the additive migration and seed
 tracked names from the same catalog used by the web app:
 
 ```sh
@@ -132,3 +132,20 @@ cd desktop
 No paid API runs in tests. Real Postgres tests skip when the isolated test DB is
 unavailable. MCP SDK major version is constrained below 2 because the server uses
 the v1 FastMCP interface.
+
+
+## S3-only Pi audio upgrade
+
+Update/restart this worker after the S3-only Pi revision. Pi no longer posts to
+web: it uploads `incoming/device/<uuid>.ogg`, `.jpeg` and `.ready.json` last.
+The worker consumes only complete validated manifests, checks both objects,
+transcribes through ElevenLabs using its own `ELEVENLABS_API_KEY`, matches tracked
+Postgres names/aliases, and continues the same Hermes/memory pipeline. Results
+carry source, creation time, transcript and targets for independent web discovery.
+
+Grant desktop read access to device audio/metadata/images under `incoming/`.
+Pi's `.jpeg` images are deliberately ignored by the previous worker version, so
+queued recordings wait safely until this upgrade. STT failures yield an explicit
+processing failure and are retried at the existing delay; they do not count as
+missing objects. Successfully committed transcripts are reused on later retries.
+No new database migration is needed beyond the existing `0002`.
