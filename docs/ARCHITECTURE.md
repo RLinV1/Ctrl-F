@@ -102,8 +102,8 @@ Device result JSON additionally includes `source`, `created_at`, `transcript` an
 `targets`. Web reconstructs device jobs from valid ready manifests even after
 restart or when the recording arrived before web was deployed. Discovery returns
 metadata without waiting for narration; the normal job poll starts Gemini/TTS.
-Browser session cursors avoid repeated playback in that session; a fresh session
-can discover retained device history. Retention is operator controlled.
+Browser session cursors avoid repeated playback in that session. A fresh session
+starts its cursor at page open, so earlier requests are never replayed. Retention is operator controlled.
 
 Queue metadata is `{text, targets}`; For browser-origin captures Pi adds `captured_at` (UTC ISO timestamp)
 before uploading the photo. Existing photos without this use S3 upload time.
