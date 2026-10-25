@@ -7,7 +7,7 @@ Tells the person whether the camera (the Pi) and the desktop that runs the model
 ## ADDED Requirements
 
 ### Requirement: Record Pi activity
-Every authenticated call the Pi makes to `GET /api/jobs/next` SHALL record the current time as the Pi's last activity, whether or not a job is returned.
+Every authenticated call the Pi makes to `GET /api/jobs/next` or `POST /api/device/jobs` SHALL record the current time as the Pi's last activity, whether or not a job is returned.
 
 #### Scenario: Idle poll
 - **WHEN** the Pi polls with a valid token and no job is pending

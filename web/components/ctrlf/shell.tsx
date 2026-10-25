@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, Suspense, useState } from "react";
-import FlowField from "@/components/kokonutui/flow-field";
+import DotField from "@/components/kokonutui/dot-field";
 import { cn } from "@/lib/utils";
 import { DeviceStatusPanel } from "./device-status";
 import { Mark } from "./mark";
@@ -12,6 +12,7 @@ import { Mark } from "./mark";
 const NAV = [
   { href: "/", label: "Ask" },
   { href: "/items", label: "Items" },
+  { href: "/history", label: "History" },
   { href: "/results", label: "Results" },
 ] as const;
 
@@ -55,7 +56,7 @@ function ActiveNavLinks({ onNavigate }: { onNavigate: () => void }) {
  * right and bottom, with a 1px edge and no shadow. On a phone the frame goes and
  * a 48px bar holds the menu, the name and nothing else.
  */
-export function Shell({ children, signOut }: { children: ReactNode; signOut: boolean }) {
+export function Shell({ children, signOut }: { children: ReactNode; signOut?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
@@ -77,23 +78,23 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
   const footer = (
     <div className="mt-auto space-y-6">
       <DeviceStatusPanel />
-      {signOut && (
-        <form action="/api/session" method="post">
-          <input name="intent" type="hidden" value="sign-out" />
-          <button className="text-ink-muted text-sm underline-offset-4 hover:text-ink hover:underline" type="submit">
-            Sign out
-          </button>
-        </form>
-      )}
+      {signOut}
     </div>
   );
 
   return (
     <div className="relative isolate min-h-dvh bg-paper md:flex">
-      {/* Brass streams drifting behind the frame, like steam through the works. Fixed to the
-          window; still under reduced motion. The sheet lets them show faintly between panels. */}
-      <FlowField className="fixed -z-10 text-brass/75" density={1} speed={0.55} />
-      <aside className="hidden w-[228px] shrink-0 flex-col px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
+      {/* A field of brass dots behind the frame that ripples under the cursor and rings out
+          where you click on empty space. Fixed to the window; still under reduced motion. */}
+      <DotField
+        className="pointer-events-none fixed inset-0 -z-10 min-h-0 bg-transparent text-brass"
+        listenOnWindow
+        masked={false}
+        spacing={18}
+      >
+        {null}
+      </DotField>
+      <aside className="hidden w-[228px] shrink-0 flex-col bg-paper/85 px-5 py-6 md:flex md:sticky md:top-0 md:h-dvh">
         {brand}
         {nav}
         {footer}
@@ -119,7 +120,7 @@ export function Shell({ children, signOut }: { children: ReactNode; signOut: boo
         </div>
       )}
 
-      <main className="min-w-0 flex-1 border-rule bg-sheet/55 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
+      <main className="relative min-w-0 flex-1 border-rule bg-sheet/35 md:my-2 md:mr-2 md:border md:min-h-[calc(100dvh-16px)]">
         {children}
       </main>
     </div>

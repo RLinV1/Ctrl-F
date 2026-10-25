@@ -118,8 +118,8 @@ def main() -> None:
                 key = obj["Key"]
                 # one bad file must not stop the loop
                 try:
-                    if key.endswith(".jpg") and not has_result(key):
-                        process(key, obj["LastModified"])
+                    if key.endswith(".jpg") and not key.startswith("incoming/training/") and not has_result(key):
+                        process(key)
                 except Exception as e:
                     print(f"failed {key}: {e}", flush=True)
         time.sleep(3)

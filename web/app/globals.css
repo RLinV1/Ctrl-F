@@ -138,6 +138,17 @@
   }
 }
 
+/* The visual novel's "next" arrow bobbing in the dialogue box. */
+@keyframes vn-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
 @layer utilities {
   /* Figures that line up digit for digit. */
   .figures {

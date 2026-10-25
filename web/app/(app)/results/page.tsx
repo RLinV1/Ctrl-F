@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { RefreshButton } from "@/components/ctrlf/refresh-button";
+import { ResultItem } from "@/components/ctrlf/result-item";
 import { SnapshotFrame } from "@/components/ctrlf/snapshot-frame";
 import { requestTime, store } from "@/lib/data";
 import type { JobView } from "@/lib/data/types";
@@ -37,8 +38,7 @@ function outcome(job: JobView): string {
 
 async function ResultList() {
   const data = await store();
-  const [jobs, photos] = await Promise.all([data.listJobs(LIMIT), data.listPhotos()]);
-  const hasPhoto = new Set(photos.map((p) => p.id));
+  const jobs = await data.listJobs(LIMIT);
   const now = await requestTime();
   if (jobs.length === 0) {
     return (
@@ -48,23 +48,16 @@ async function ResultList() {
       </section>
     );
   }
-  // A plain link: next/link would try to open the zip as a page instead of saving it.
-  const downloadAll = photos.length > 0 && (
-    <a className="border border-rule bg-card-row px-3 py-1.5 font-semibold text-sm hover:bg-panel" data-testid="download-all" download href="/api/photos/zip">
-      Download all photos ({photos.length})
-    </a>
-  );
   return (
     <>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[70ch] text-[17px] text-ink-muted">
           {jobs.length === LIMIT ? `The latest ${LIMIT} questions` : `${jobs.length} questions`}, newest first.
         </p>
-        {downloadAll}
       </div>
       <ul className="mt-12 space-y-4">
         {jobs.map((job) => (
-          <li className="bg-panel p-5" data-job={job.id} key={job.id}>
+          <ResultItem id={job.id} key={job.id}>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)]">
               <div>
                 {job.match ? (
@@ -94,18 +87,13 @@ async function ResultList() {
                 </p>
                 {job.transcript && <p className="mt-1 text-ink-muted text-sm">Asked: “{job.transcript}”</p>}
                 {job.replyText && <p className="mt-2">{job.replyText}</p>}
-                {hasPhoto.has(job.id) && (
-                  <a className="mt-3 inline-block underline underline-offset-4" download={`${job.id}.jpg`} href={`/api/photos/${job.id}?download=1`}>
-                    Download the camera&apos;s photo
-                  </a>
-                )}
                 {job.replyAudioUrl && (
                   // biome-ignore lint/a11y/useMediaCaption: the reply text is shown above
                   <audio className="mt-3 w-full max-w-[360px]" controls preload="none" src={job.replyAudioUrl} />
                 )}
               </div>
             </div>
-          </li>
+          </ResultItem>
         ))}
       </ul>
     </>
