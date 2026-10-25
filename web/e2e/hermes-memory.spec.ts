@@ -14,7 +14,7 @@ const result: Result = { version: 2, status: "not_visible", target: "keys", matc
   width: 1280, height: 720, captured_at: "2026-10-25T10:00:00Z", history_status: "available", last_sighting: evidence };
 
 // This integration uses real handlers/store and mocks only the external boundaries.
-function fixture(objects = new Map<string, string>(), transcript = "Where are my keys?") {
+function fixture(objects = new Map<string, string>(), transcript = "Where are my keys?", remarkProvider = async (): Promise<string | null> => null) {
   const client = { send: async (command: unknown) => {
     const c = command as {input: {Key?: string; Prefix?: string; Body?: string}};
     if (command instanceof ListObjectsV2Command) return {Contents: [...objects.keys()].filter(k => k.startsWith(c.input.Prefix!))
@@ -30,7 +30,7 @@ function fixture(objects = new Map<string, string>(), transcript = "Where are my
   const store = new S3Store({client, sign: async key => `https://photos.invalid/${key}`, services: {
     transcribe: async () => transcript, narrate: async facts => plainReply(facts),
     speak: async () => ({audio: Buffer.from("mock voice"), timings: []}),
-    pickTargets, remark: async () => null,
+    pickTargets, remark: remarkProvider,
   }});
   return {store, objects};
 }
@@ -269,4 +269,44 @@ test("raw camera pixels display with only the requested target circle", async ({
   await expect(page.getByRole("img",{name:/phone/})).toHaveCount(0);
   expect(fetchedPhotos).not.toContain(`/results/${job.id}_result.jpg`);
   expect(await mark.evaluate(element => ({left:element.style.left,top:element.style.top,width:element.style.width,height:element.style.height}))).toEqual({left:"10%",top:"20%",width:"20%",height:"20%"});
+});
+
+
+test("empty optional photo remark is not retried by repeated job polling", async () => {
+  let attempts = 0;
+  const {store,objects} = fixture(new Map<string,string>(),"Where are my keys?",async () => {attempts++;return null;});
+  const job = await store.askText("keys");
+  objects.set(`incoming/${job.id}.jpg`,"original pixels");
+  for (let poll = 0; poll < 4; poll++) {
+    expect((await store.getJob(job.id))?.status).toBe("claimed");
+    await new Promise(resolve => setTimeout(resolve,0));
+  }
+  expect(attempts).toBe(1);
+  objects.set(`results/${job.id}_result.json`,JSON.stringify({version:2,status:"found",target:"keys",matches:[],detections:[]}));
+  objects.set(`results/${job.id}_result.jpg`,"annotated");
+  expect((await store.getJob(job.id))?.status).toBe("done");
+  expect(attempts).toBe(1);
+});
+
+
+test("Postgres results name the found second target when the first target is missing", async () => {
+  const state = globalThis as unknown as {__ctrlfPool?: import("pg").Pool};
+  const previous = state.__ctrlfPool;
+  process.env.DATABASE_URL = "postgresql://mock-only";
+  const now = new Date();
+  state.__ctrlfPool = {query:async (sql:string) => ({rows:sql.includes("FROM photos p") ? [{
+    id:"multi-job",taken_at:now,transcript:"Where are my airpods and phone?",targets:["airpods","phone"],found:true,
+    snapshot_key:"incoming/multi-job.jpg",photo_width:1280,photo_height:720,
+    det_id:"phone-sighting",label:"phone",confidence:null,location_description:"Beside the AirPods case",bbox:{x:.5,y:.2,w:.2,h:.3},
+    zone:null,seen_at:now,key:"incoming/multi-job.jpg",width:1280,height:720,
+  }] : []})} as unknown as import("pg").Pool;
+  try {
+    const {store} = fixture();
+    const jobs = await store.listJobs(10);
+    expect(jobs[0]).toMatchObject({target:"phone",found:true,match:{label:"phone"}});
+    expect(jobs[0].match?.snapshot.url).toContain("incoming/multi-job.jpg");
+  } finally {
+    state.__ctrlfPool = previous;
+    process.env.DATABASE_URL = "";
+  }
 });

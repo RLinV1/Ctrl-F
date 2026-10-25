@@ -113,3 +113,14 @@ Postgres readers and last-seen evidence use the exact original `s3_key`. Annotat
 displayed source. Keep originals private and retained for historical display;
 deleted originals cannot be recovered by removing boxes from an annotated JPEG.
 No desktop/Pi update or schema migration is required for this display change.
+
+
+To run the same browser suite against a production build with providers disabled:
+
+```sh
+env -u NODE_OPTIONS GEMINI_API_KEY= ELEVENLABS_API_KEY= DATABASE_URL= UI_PASSWORD= PI_JOB_TOKEN=test S3_ENDPOINT=http://127.0.0.1:1 S3_ACCESS_KEY_ID=test S3_SECRET_ACCESS_KEY=test pnpm build
+env -u NODE_OPTIONS pnpm exec playwright test --config playwright.production.config.ts
+```
+
+The production test configuration reuses the existing mocked browser suite on
+port 3100. Restart the normal dev server afterward for real requests.

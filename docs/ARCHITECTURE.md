@@ -217,3 +217,18 @@ served from `/api/jobs/<id>/remark` and held in web memory. Remarks are separate
 from final results, contain no claims about image contents, and are discarded
 when the final answer is ready. The final answer takes playback priority. The
 updated stage/frame and vapor transitions retain raw-photo target overlays.
+
+
+Optional waiting remarks are attempted once per retained job, including empty
+Gemini replies and Gemini/TTS failures. Subsequent browser polls cannot repeat
+those paid requests. Remark failures remain isolated from the final answer.
+
+Invalid saved device-discovery cursors are rejected before polling; corrupted
+session data starts a fresh cursor rather than sending permanent invalid API
+requests. The current no-replay startup still relies on browser/Pi clock
+alignment; redesigning discovery around arrival cursors is outside this audit fix.
+
+Postgres-backed result history selects the first requested target actually
+observed in that photo, rather than assuming the first requested item was found.
+The displayed target follows the selected sighting label. This does not alter
+S3 fallback selection or deployment database configuration.

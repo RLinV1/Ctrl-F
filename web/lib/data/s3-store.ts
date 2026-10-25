@@ -101,6 +101,7 @@ export class S3Store implements Store {
   /** The narrator's quip when a job's photo is taken, voiced; held in memory like replies. */
   private remarks = new Map<string, { text: string; audio: Buffer; timings: WordTime[] }>();
   private remarking = new Set<string>();
+  private remarkAttempted = new Set<string>();
   private results: { at: number; rows: StoredResult[] } | null = null;
   private known: { at: number; list: string[] } | null = null;
   private deviceScan: Promise<void> | null = null;
@@ -300,7 +301,10 @@ export class S3Store implements Store {
     );
     this.jobs.set(rec.id, rec);
     console.log(`[timing] ${rec.id.slice(0, 8)} send: writing job ${Date.now() - tStt} ms`);
-    for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) this.jobs.delete(old);
+    for (const old of [...this.jobs.keys()].slice(0, -JOB_CACHE)) {
+      this.jobs.delete(old);
+      this.remarkAttempted.delete(old);
+    }
     return this.view(rec);
   }
 
@@ -334,8 +338,10 @@ export class S3Store implements Store {
    * only for a fresh photo, and only if it is spoken before the answer is ready (the answer always wins).
    */
   private startRemark(rec: JobRec) {
-    if (this.remarks.has(rec.id) || this.remarking.has(rec.id)) return;
+    if (this.remarkAttempted.has(rec.id) || this.remarking.has(rec.id)) return;
     if (Date.now() - (rec.claimedAt ?? 0) > REMARK_FRESH_MS) return;
+    // Mark the attempt before awaiting providers, even if they return null/fail.
+    this.remarkAttempted.add(rec.id);
     this.remarking.add(rec.id);
     const answered = () => this.jobs.get(rec.id)?.status !== "claimed";
     (async () => {
@@ -532,7 +538,7 @@ export class S3Store implements Store {
         transcript: r.transcript,
         targets: r.targets,
         unsupported: null,
-        target: r.targets[0] ?? null,
+        target: r.match?.label ?? r.targets[0] ?? null,
         found: r.found,
         photo: { key: r.snapshotKey, seenAt: r.at, width: r.width, height: r.height },
         match: r.match,

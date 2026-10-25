@@ -85,11 +85,46 @@ describe("the narrator's remark when the photo is taken", () => {
   });
 
   it("is skipped when Gemini gives nothing", async () => {
-    const { store, objects } = fixture({ quip: null });
+    const { store, objects, remarkStub } = fixture({ quip: null });
     const job = await store.askText("Where are my keys?");
     objects.set(`incoming/${job.id}.jpg`, "photo");
     await store.getJob(job.id);
     await settle();
+    expect((await store.getJob(job.id))?.remark).toBeNull();
+    await store.getJob(job.id);
+    await settle();
+    expect(remarkStub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("failed optional remark attempts", () => {
+  it("does not retry a failed TTS call on later polls", async () => {
+    const speak = vi.fn(async () => { throw new Error("mock voice unavailable"); });
+    const {store,objects,remarkStub} = fixture({speak});
+    const job = await store.askText("keys");
+    objects.set(`incoming/${job.id}.jpg`,"photo");
+    await store.getJob(job.id);
+    await settle();
+    for (let poll=0; poll<3; poll++) await store.getJob(job.id);
+    await settle();
+    expect(remarkStub).toHaveBeenCalledTimes(1);
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect((await store.getJob(job.id))?.remark).toBeNull();
+    objects.set(`results/${job.id}_result.json`,JSON.stringify({status:"found",target:"keys",matches:[],detections:[]}));
+    objects.set(`results/${job.id}_result.jpg`,"annotated");
+    expect((await store.getJob(job.id))?.status).toBe("done");
+  });
+
+  it("does not retry a rejected wording call on later polls", async () => {
+    const {store,objects,remarkStub} = fixture();
+    remarkStub.mockRejectedValue(new Error("mock wording unavailable"));
+    const job = await store.askText("keys");
+    objects.set(`incoming/${job.id}.jpg`,"photo");
+    await store.getJob(job.id);
+    await settle();
+    await Promise.all([store.getJob(job.id),store.getJob(job.id)]);
+    await settle();
+    expect(remarkStub).toHaveBeenCalledTimes(1);
     expect((await store.getJob(job.id))?.remark).toBeNull();
   });
 });

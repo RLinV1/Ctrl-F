@@ -113,8 +113,8 @@ export async function pgResults(limit: number): Promise<PgResult[]> {
             ${SIGHTING}
        FROM photos p
        LEFT JOIN jobs j ON j.id = p.job_id
-       LEFT JOIN LATERAL (SELECT * FROM detections WHERE photo_id = p.id AND label = lower(j.targets[1])
-                          ORDER BY confidence DESC NULLS LAST, id LIMIT 1) d ON true
+       LEFT JOIN LATERAL (SELECT * FROM detections WHERE photo_id = p.id AND label = ANY(j.targets)
+                          ORDER BY array_position(j.targets, label), confidence DESC NULLS LAST, id LIMIT 1) d ON true
        LEFT JOIN zones z ON z.id = d.zone_id
       ORDER BY p.taken_at DESC LIMIT $1`,
     [limit],
