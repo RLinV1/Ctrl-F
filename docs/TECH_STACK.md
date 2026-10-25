@@ -1,6 +1,6 @@
 # Tech Stack
 
-**Current target: run everything locally.** Cloud hosting (Vercel, GoDaddy domain, managed Postgres and storage) is deferred. Every component below is chosen so moving to the cloud later is a config change.
+**Current target: deploy on the user's service hosts.** The coding workstation is not a runtime target. Hostnames, credentials, storage and Postgres connections are env-configured; no hosting provider is changed by this transition.
 
 Status column: **Decided** = user stated it. **Default** = our recommendation, change if the team disagrees.
 
@@ -11,22 +11,22 @@ Status column: **Decided** = user stated it. **Default** = our recommendation, c
 | Web app | Next.js (App Router, TypeScript), `next dev` on the desktop | Decided | User requirement. Bind to `0.0.0.0` so the Pi can reach it. |
 | Database | PostgreSQL in Docker | Decided (Postgres) | Same engine as the later managed instance. |
 | Object storage | SeaweedFS (S3 API) in Docker | Default | User's first idea. Any S3-compatible store works (MinIO, or R2 later) because code uses the S3 API only. |
-| Desktop service | Python 3.11+, FastAPI | Default | Same language as Ultralytics. Runs YOLO on the desktop GPU. |
-| Pi service | Python, picamera2 (or OpenCV), small FastAPI | Default | `/capture` returns a JPEG. Polls the web API and forwards photos to the desktop. |
-| Pi <-> web | Pi polls `GET http://<desktop-ip>:3000/api/jobs/next` over the LAN | Default | Pi makes outbound calls only. |
-| Pi <-> desktop | HTTP on the LAN | Default | Simplest. |
-| Audio in/out | Browser microphone (`MediaRecorder`) and browser playback | Decided | The Pi has no microphone. `getUserMedia` works on `http://localhost`. Opening the site from another device needs HTTPS. |
-| LLM | Google Gemini | Decided | Narrator only: witty steampunk replies. Does not parse requests or detect items. |
+| Desktop service | Python 3.11+ polling worker | Default | Python S3 worker calling Hermes HTTP API and persisting Postgres sightings; no GPU required. |
+| Pi service | Python, fswebcam, ALSA, ffmpeg, gpiozero | Decided | Logitech USB webcam camera/mic and Grove button; outbound S3 relay. |
+| Pi <-> web | POST audio to `/api/device/jobs` | Decided | Pi bearer token; browser requests keep using `/api/jobs`. |
+| Pi <-> processing worker | Private S3 `jobs/`, `incoming/`, `results/` relay | Decided | Retains the actual dev transport; no inbound Pi/worker calls. |
+| Audio in/out | Browser microphone or Logitech webcam mic; browser playback | Decided | Hold the Pi button for webcam audio or use browser `MediaRecorder`. `getUserMedia` works on `http://localhost`. Opening the site from another device needs HTTPS. |
+| LLM | Google Gemini | Decided | Victorian narration; existing web target-picking fallback remains. Image analysis/memory use Hermes. |
 | Voice | ElevenLabs (STT and TTS) | Decided | Cloud API; needs internet and an API key. |
-| Object detection | YOLO via Ultralytics, custom fine-tuned | Decided | See `docs/TRAINING.md`. Weights are a local file. |
+| Object detection | Vision-capable Hermes Agent over authenticated HTTP | Decided | User-approved transition; endpoint from `.env`, strict observations and Postgres history tools. |
 | Web testing | Playwright (`@playwright/test`) | Decided | All website tests. External APIs are mocked. |
 | Python testing | pytest | Default | For `desktop/` and `pi/`. |
 | UI auth | Single-user password | Default | Optional while local; required before any deployment. |
-| ORM / queries | Plain SQL with `postgres` (web, see the web-ui change), SQLAlchemy 2 + psycopg 3 with Alembic migrations (desktop) | Default | The desktop owns the schema: `desktop/ctrlf_db/models.py` and `desktop/migrations/`. |
+| ORM / queries | Plain SQL with `pg` (web), SQLAlchemy 2 + psycopg 3 with Alembic migrations (desktop) | Default | The desktop owns the schema: `desktop/ctrlf_db/models.py` and `desktop/migrations/`. |
 | Package managers | pnpm (web), uv or pip + venv (Python) | Default | |
-| Orchestration | `docker-compose.yml` for Postgres and SeaweedFS | Default | One command brings up the data services. |
+| Orchestration | `docker-compose.yml` for optional local Postgres | Default | Existing remote service connections remain selected by env. |
 
-Only the voice, narrator and their APIs need the internet when running locally: ElevenLabs and Gemini.
+ElevenLabs, Gemini and the configured Hermes/provider need reachable endpoints. Local or remote Postgres and S3 are selected through existing env configuration.
 
 ## Environment variables (names only, no values in the repo)
 
@@ -42,34 +42,53 @@ S3_ENDPOINT               # e.g. http://localhost:8333
 S3_BUCKET
 S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY
-YOLO_WEIGHTS_PATH         # local path to best.pt
-WEB_BASE_URL              # Pi polls this, e.g. http://192.168.1.20:3000
-PI_JOB_TOKEN              # bearer token the Pi uses on /api/jobs/next
-DESKTOP_BASE_URL          # Pi forwards photos here, e.g. http://192.168.1.20:9000
+YOLO_WEIGHTS_PATH         # legacy training tools only
+WEB_BASE_URL              # Pi submits audio here, e.g. https://web.example
+PI_JOB_TOKEN              # bearer token for /api/device/jobs
+DESKTOP_BASE_URL          # legacy only; current capture relay uses S3
 UI_PASSWORD               # single-user login for the web UI
 ```
 
 ## Process map (local)
 
-- Desktop: Next.js dev server, desktop FastAPI service (YOLO), Docker (Postgres, SeaweedFS).
+- Service hosts: Next.js web, Python processing worker, Postgres/S3 and Hermes API (possibly on separate hosts).
 - Raspberry Pi: camera and relay service.
 - Browser: microphone and speaker, opened on the desktop at `http://localhost:3000`.
 
-## Docker Compose first
+## Optional local Postgres
 
-We run the app with Docker Compose before anything else. `docker-compose.yml` at the repo root defines the services.
-
-| Service | Status | Notes |
-| --- | --- | --- |
-| `postgres` | In the file now | Postgres 16, port 5432 |
-| `seaweedfs` | In the file now | S3 API on port 8333, no auth (local only). Unverified: confirm the image command when first started. Create the bucket on first use. |
-| `web` | Add when `web/` exists | Next.js, port 3000, published on the LAN so the Pi can poll it |
-| `desktop` | Add when `desktop/` exists | FastAPI + YOLO, port 9000. Needs GPU passthrough (NVIDIA Container Toolkit) to use the GPU; without it, runs on CPU. |
-
-The Pi is not part of Compose. Run `docker compose up -d` for the data services, then run web and desktop in Compose or directly on the host while developing.
-
-Inside Compose, containers reach each other by service name (`postgres`, `seaweedfs`). The browser and the Pi use the desktop's host address instead. Signed media URLs must use a host the browser can reach, so keep a separate public S3 endpoint setting if the internal and public addresses differ.
+`docker-compose.yml` can start Postgres for local experiments on a deployment host.
+It does not provision Hermes, the web app or the Pi. Existing external Postgres and
+S3 services are configured through `DATABASE_URL` and `S3_*`; this change makes no
+new storage-provider choice. The processing worker is a host Python process and
+needs no GPU passthrough. The Pi runs separately on its attached hardware.
 
 ## Going live
 
 See [TECH_STACK_LIVE.md](TECH_STACK_LIVE.md) for the go-live stack (Vercel, GoDaddy domain, managed Postgres, R2) and the checklist.
+
+## Hermes runtime configuration
+
+The approved transition replaces YOLO inference with an `httpx>=0.28,<1` adapter,
+Pillow image annotation and the MCP SDK v1 (`mcp>=1.20,<2`) for the read-only
+memory helper. Ultralytics remains only in optional training tools. Configure
+these names in the appropriate host's env file (see `.env.example`):
+
+- `HERMES_BASE_URL`: authenticated agent API base URL including `/v1`; remote HTTPS.
+- `HERMES_API_KEY`: matches Hermes's `API_SERVER_KEY`, processing host only.
+- `HERMES_MODEL`: API agent identifier, default `hermes-agent`; actual provider/model lives inside Hermes.
+- `HERMES_TIMEOUT_SECONDS`: per-call budget, default 30, maximum 120.
+- `MEMORY_DATABASE_URL`: SELECT-only connection on the Hermes MCP helper host.
+- `PI_AUDIO_DEVICE`: Logitech ALSA device name, configured on the Pi.
+- `PI_RECORD_MAX_SECONDS`: bounded recording duration, default 15 (0.5–60).
+- `CAPTURE_BUTTON_PIN`: Grove GPIO pin, default 5.
+
+Hermes server settings (`API_SERVER_ENABLED`, `API_SERVER_KEY`, `API_SERVER_HOST`,
+`API_SERVER_PORT`) belong in Hermes's own configuration. The API defaults to
+loopback port 8642; a proxy on another host requires an appropriately reachable
+bind address. A real-image smoke check passed; record the deployed agent version
+and model/provider on the deployment checklist before production rollout.
+
+See `desktop/README.md`, `pi/README.md`, `web/README.md` and `docs/DEPLOYMENT.md`
+for host-specific startup, ALSA/ffmpeg packages, migrations, private S3 permissions
+and acceptance tests. The coding workstation is not a deployment target.

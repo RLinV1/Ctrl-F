@@ -15,11 +15,12 @@ from .zones import assign_zone
 
 @dataclass(frozen=True)
 class Box:
-    """One YOLO box. `bbox` is {x, y, w, h} as fractions of the image."""
+    """One validated observation. `bbox` is {x, y, w, h} as fractions of the image."""
 
     label: str
-    confidence: float
+    confidence: float | None
     bbox: dict
+    location_description: str | None = None
 
 
 def box_from_yolo(d: dict) -> Box:
@@ -113,12 +114,13 @@ def save_result(
                 item_id=item.id if item else None,
                 label=b.label,
                 confidence=b.confidence,
+                location_description=b.location_description,
                 bbox=b.bbox,
                 zone_id=assign_zone(b.bbox, zones),
                 seen_at=taken_at,
             )
             session.add(det)
-            if item and (item.id not in best or b.confidence > best[item.id].confidence):
+            if item and (item.id not in best or observation_rank(det) > observation_rank(best[item.id])):
                 best[item.id] = det
 
         for item_id, det in best.items():
@@ -138,3 +140,39 @@ def save_result(
                 update(Item).where(Item.id.in_(missing)).values(lost_count=Item.lost_count + 1)
             )
         return Saved(photo_id, created=True)
+
+
+def observation_rank(det: Detection) -> tuple:
+    """Prefer a supplied score; break ties by geometry for stable unscored boxes."""
+    box = det.bbox
+    return (det.confidence if det.confidence is not None else -1.0,
+            -box["x"], -box["y"], -box["w"], -box["h"], det.location_description or "")
+
+
+def lookup_last_sighting(session: Session, item_id: uuid.UUID, before: datetime) -> dict | None:
+    """Read-only historical evidence, strictly before the current photo's time.
+
+    A query error propagates; it must never be confused with an empty history.
+    Keys remain private storage keys for the caller to sign at display time.
+    """
+    if before.tzinfo is None or before.utcoffset() is None:
+        raise ValueError("before must include a timezone")
+    row = session.execute(
+        select(Detection, Photo, Zone.name)
+        .join(Photo, Photo.id == Detection.photo_id)
+        .outerjoin(Zone, Zone.id == Detection.zone_id)
+        .where(Detection.item_id == item_id, Detection.seen_at < before)
+        .order_by(Detection.seen_at.desc(), Detection.confidence.desc().nulls_last(),
+                  Detection.bbox["x"].as_float().asc(), Detection.bbox["y"].as_float().asc(),
+                  Detection.bbox["w"].as_float().asc(), Detection.bbox["h"].as_float().asc(), Detection.id.asc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None
+    det, photo, zone = row
+    return {"detection_id": str(det.id), "item_id": str(det.item_id),
+            "photo_id": str(photo.id), "seen_at": det.seen_at.isoformat(),
+            "label": det.label, "confidence": det.confidence, "bbox": det.bbox,
+            "location_description": det.location_description, "zone": zone,
+            "s3_key": photo.s3_key, "annotated_key": photo.annotated_key,
+            "width": photo.width, "height": photo.height}

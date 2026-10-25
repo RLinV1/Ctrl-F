@@ -125,7 +125,7 @@ class Item(Base):
 
 
 class Detection(Base):
-    """One box YOLO found in a photo. `item_id` is null for classes we don't track."""
+    """One validated object observation in a photo. `item_id` is null for classes we don't track."""
 
     __tablename__ = "detections"
     __table_args__ = (Index("ix_detections_item_seen", "item_id", text("seen_at DESC")),)
@@ -136,7 +136,8 @@ class Detection(Base):
     )
     item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id", ondelete="SET NULL"))
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence: Mapped[float] = mapped_column(REAL, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(REAL, nullable=True)
+    location_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     bbox: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {x, y, w, h} in 0..1
     zone_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("zones.id", ondelete="SET NULL"))
     seen_at: Mapped[datetime] = mapped_column(

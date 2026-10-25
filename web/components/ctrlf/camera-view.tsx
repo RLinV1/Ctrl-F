@@ -24,8 +24,8 @@ export function CameraView({ answer, answeredAt, working }: { answer: JobView | 
         caption={
           <>
             <span className="font-semibold first-letter:uppercase">{name}</span>
-            <span>{place ? `On ${place}` : "Place not marked"}</span>
-            <span className="figures text-ink-muted">{percent(m.confidence)} sure</span>
+            <span>{m.locationDescription || (place ? `On ${place}` : "Place not marked")}</span>
+            {m.confidence != null && <span className="figures text-ink-muted">{percent(m.confidence)} sure</span>}
             <span className="figures text-ink-muted">Photo at {clockTime(m.seenAt)}</span>
           </>
         }
@@ -65,7 +65,7 @@ export function CameraView({ answer, answeredAt, working }: { answer: JobView | 
       <>
         {latest && <Photo alt="Latest camera photo" sighting={latest.photo} />}
         <p className="mt-3 text-[15px]" data-testid="never-seen">
-          The camera has not seen the {name} yet. Put it somewhere in view and it will be remembered.
+          {answer.historyStatus === "never_seen" ? `The camera has not seen the ${name} yet.` : `The ${name} is not in view. History cannot currently be checked.`}
         </p>
       </>
     );

@@ -2,12 +2,12 @@ schema: spec-driven
 
 context: |
   Project: Ctrl-F. Finds lost physical items. Voice request -> Raspberry Pi photo ->
-  YOLO on a desktop -> stored sighting (snapshot + Postgres row) -> spoken answer.
+  Hermes image analysis from a processing worker -> stored sighting (snapshot + Postgres row) -> spoken answer.
   Read docs/PRD.md, docs/ARCHITECTURE.md, docs/TECH_STACK.md before proposing changes.
-  Components: web/ (Next.js on Vercel), desktop/ (Python FastAPI, YOLO), pi/ (Python, camera + relay; the Pi has no mic, the browser records audio).
-  Stack: Next.js + TypeScript, Vercel, GoDaddy domain, Gemini (witty steampunk narrator only; never parses requests or detects items), ElevenLabs, Ultralytics YOLO (custom fine-tuned model, see docs/TRAINING.md),
+  Components: web/ (Next.js on Vercel), desktop/ (Python S3 polling worker, Hermes HTTP adapter), pi/ (Python, Logitech webcam camera/mic + relay; browser mic for web requests).
+  Stack: Next.js + TypeScript, Vercel, GoDaddy domain, Gemini (Victorian narration and retained target-picking fallback; no image analysis), ElevenLabs, Hermes Agent (configured vision provider, read-only Postgres MCP history tool),
   Postgres, S3-compatible storage (R2 default; SeaweedFS possible).
-  Constraints: Vercel never calls the desktop or Pi (the Pi polls /api/jobs/next outbound and forwards photos to the desktop on the LAN; desktop writes results to Postgres and storage).
+  Constraints: Vercel never calls the desktop or Pi (Pi polls S3 jobs/ and uploads incoming/ photos; processing worker polls photos and writes Postgres/results; device audio is posted outbound to web).
   Snapshots are private (signed URLs). No secrets in the repo.
   Conventions: Conventional Commits, branches named type/short-slug, no Co-Authored-By trailers.
 

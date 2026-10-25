@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repo. Humans: see [README.md](READ
 
 ## What this project is
 
-Ctrl-F finds lost physical items. Voice request -> Raspberry Pi photo -> YOLO on a desktop -> stored sighting + spoken answer. Details: [docs/PRD.md](docs/PRD.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TECH_STACK.md](docs/TECH_STACK.md).
+Ctrl-F finds lost physical items. Voice request -> Raspberry Pi photo -> Hermes image analysis from a processing worker -> stored sighting + spoken answer. Details: [docs/PRD.md](docs/PRD.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TECH_STACK.md](docs/TECH_STACK.md).
 
 ## Read first
 
@@ -26,8 +26,8 @@ We use [OpenSpec](https://github.com/Fission-AI/OpenSpec). Specs live in `opensp
 
 ```
 web/       Next.js (TypeScript) -> Vercel
-desktop/   Python FastAPI service: STT, YOLO, DB, storage, Gemini narrator, TTS
-pi/        Python service on the Raspberry Pi: camera + job relay (no mic on the Pi)
+desktop/   Python S3 worker: Hermes image analysis, Postgres sightings, annotation; read-only MCP memory helper
+pi/        Python service on the Raspberry Pi: camera + job relay (Logitech webcam mic for button requests)
 docs/      PRD, architecture, tech stack
 ```
 
@@ -35,13 +35,13 @@ Directories are created as milestones land (see PRD roadmap). Check the filesyst
 
 ## Hard constraints
 
-- Vercel runs only the web app. No YOLO, no long jobs, no inbound calls to the desktop or Pi.
+- Vercel runs only the web app. No agent image processing or long processing jobs, no inbound calls to the desktop or Pi.
 - The desktop writes results directly to Postgres and object storage. The web app never calls the desktop or the Pi.
-- The browser owns the mic and speaker. The Pi takes photos and relays each request to the desktop. The Pi polls the web API for jobs (outbound only).
+- Web requests use the browser mic; Pi-button requests use its Logitech webcam mic. All replies play through the open browser. The Pi posts audio outbound to web and polls S3 jobs/ for camera work.
 - Never commit secrets. Add new env var names to `.env.example` and `docs/TECH_STACK.md`.
 - Snapshots are private. Serve them with signed URLs only.
 - Storage code uses the S3 API only, so the backend (R2, Supabase, SeaweedFS) stays swappable.
-- Stock YOLO (COCO) cannot detect keys or wallets. Keep matching logic behind one module so the strategy can change.
+- Hermes observations must be validated before persistence. Postgres is authoritative for sightings; agent personal memory is not. Keep analysis behind the adapter.
 
 ## Theme
 
@@ -73,11 +73,11 @@ Steampunk everywhere: web UI (brass, copper, aged paper, gears, gauges, Victoria
 ## Open decisions (ask the user before assuming)
 
 - Managed Postgres + R2 vs self-hosted SeaweedFS.
-- Which item classes to train first, and where training runs (local GPU vs cloud).
-- How the target is pulled from the transcript before it reaches YOLO (strip filler words and match against the trained class list).
+- Optional training experiments: which item classes and where training runs (outside the active Hermes runtime).
+- Changes to the target picker beyond the retained named-item matching and Gemini fallback.
 
-The YOLO model is custom-trained (fine-tuned) on our item classes. See `docs/TRAINING.md`. Weights are not committed to git.
+The active runtime uses a configured vision-capable Hermes Agent. YOLO training tools remain optional; no weights are required.
 
-Gemini is only the narrator: a witty steampunk persona that words the final reply. It does not parse requests or detect items.
+Gemini writes Victorian replies and retains the existing target-picker fallback. Hermes handles image analysis and history lookup. ElevenLabs handles transcription and speech.
 - On-demand capture only vs periodic background snapshots.
 - Job hand-off: Pi polling `/api/jobs/next` (default) vs exposing the Pi through a tunnel.

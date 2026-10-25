@@ -1,119 +1,148 @@
-"""server.process() writes S3 first, then Postgres. YOLO and S3 are faked."""
+"""Worker publishes only persisted successes; S3, Hermes and DB boundaries are mocked."""
 
-import importlib
 import io
 import json
-import sys
-import types
-import uuid
 from datetime import UTC, datetime
-from typing import ClassVar
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+from PIL import Image
 from botocore.exceptions import ClientError
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from ctrlf_db.models import Detection, Item, Job, Photo
-from ctrlf_db.seed import add_items
+import processing
+from hermes import Observation, Scene
+from server import Worker
 
-from .conftest import TEST_URL
-
-TAKEN = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
-
-
-class FakeList(list):
-    def tolist(self) -> list:
-        return list(self)
-
-
-class FakeResult:
-    names: ClassVar[dict[int, str]] = {0: "keys", 1: "person"}
-    orig_shape = (720, 1280)  # height, width
-    boxes = types.SimpleNamespace(
-        cls=FakeList([0.0, 1.0]),
-        conf=FakeList([0.91, 0.5]),
-        xyxyn=FakeList([[0.6, 0.5, 0.8, 0.7], [0.1, 0.1, 0.3, 0.9]]),
-    )
-
-    def save(self, filename: str) -> None:
-        pass
+TAKEN = datetime(2026, 10, 24, 12, tzinfo=UTC)
 
 
 class FakeS3:
-    """Like S3, only the exact key `incoming/<id>.json` holds the request."""
+    def __init__(self):
+        self.objects = {}
+        self.written = []
 
-    def __init__(self, targets: list[str], request_key: str | None = None) -> None:
-        self.targets = targets
-        self.request_key = request_key
-        self.written: list[str] = []
-
-    def download_file(self, bucket: str, key: str, dest: str) -> None:
-        open(dest, "wb").close()
-
-    def get_object(self, Bucket: str, Key: str) -> dict:
-        if not self.targets or Key != self.request_key:
+    def get_object(self, Bucket, Key):
+        if Key not in self.objects:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
-        return {"Body": io.BytesIO(json.dumps({"targets": self.targets}).encode())}
+        return {"Body": io.BytesIO(self.objects[Key])}
 
-    def put_object(self, Bucket: str, Key: str, Body: bytes) -> None:
+    def put_object(self, Bucket, Key, Body, **kwargs):
         self.written.append(Key)
+        self.objects[Key] = Body
 
-    def upload_file(self, src: str, bucket: str, key: str) -> None:
-        self.written.append(key)
-
-
-@pytest.fixture
-def server(monkeypatch: pytest.MonkeyPatch, session: Session):
-    fake_ultralytics = types.ModuleType("ultralytics")
-    fake_ultralytics.YOLO = lambda weights: lambda src: [FakeResult()]
-    monkeypatch.setitem(sys.modules, "ultralytics", fake_ultralytics)
-    for k, v in {
-        "S3_BUCKET": "test",
-        "S3_ACCESS_KEY_ID": "x",
-        "S3_SECRET_ACCESS_KEY": "x",
-        "DATABASE_URL": TEST_URL,
-        "YOLO_WEIGHTS_PATH": "models/v4/best.pt",
-    }.items():
-        monkeypatch.setenv(k, v)
-    sys.modules.pop("server", None)
-    mod = importlib.import_module("server")
-    yield mod
-    sys.modules.pop("server", None)
+    def head_object(self, Bucket, Key):
+        self.get_object(Bucket, Key)
 
 
-def test_process_stores_photo_detections_and_job(server, session: Session) -> None:
-    add_items(session, ["keys", "wallet"])
-    job = uuid.uuid4()
-    # The exact key matters: on Windows a pathlib.Path key would become "incoming\<id>.json".
-    server.s3 = FakeS3(targets=["keys", "wallet"], request_key=f"incoming/{job}.json")
-    server.process(f"incoming/{job}.jpg", TAKEN)
-
-    assert server.s3.written == [f"results/{job}_result.json", f"results/{job}_result.jpg"]
-    photo = session.scalars(select(Photo)).one()
-    assert (
-        photo.s3_key,
-        photo.annotated_key,
-        photo.width,
-        photo.height,
-        photo.taken_at,
-        photo.model_version,
-        photo.job_id,
-    ) == (f"incoming/{job}.jpg", f"results/{job}_result.jpg", 1280, 720, TAKEN, "best.pt", job)
-    labels = {d.label: d.item_id for d in session.scalars(select(Detection))}
-    assert labels["person"] is None and labels["keys"] is not None
-    items = {i.name: i for i in session.scalars(select(Item))}
-    assert items["keys"].last_seen_at == TAKEN and items["wallet"].lost_count == 1
-    assert session.get(Job, job).found is True
+class Session:
+    def __init__(self, items): self.items = items
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def scalar(self, query): return None
+    def scalars(self, query): return SimpleNamespace(all=lambda: self.items)
 
 
-def test_db_failure_keeps_s3_results(server, capsys: pytest.CaptureFixture) -> None:
-    def broken():
-        raise RuntimeError("database down")
+def jpeg():
+    out = io.BytesIO()
+    Image.new("RGB", (100, 80)).save(out, "JPEG")
+    return out.getvalue()
 
-    server.db = broken
-    server.s3 = FakeS3(targets=[])
-    server.process("incoming/manual.jpg", TAKEN)
 
-    assert server.s3.written == ["results/manual_result.json", "results/manual_result.jpg"]
-    assert "db write failed for incoming/manual.jpg: database down" in capsys.readouterr().out
+def test_every_observation_persisted_and_absent_target_uses_verified_memory(monkeypatch):
+    items = [SimpleNamespace(name="keys", aliases=["keyring"], id="keys-id"),
+             SimpleNamespace(name="wallet", aliases=[], id="wallet-id")]
+    sessions = lambda: Session(items)
+    observation = Observation("wallet", {"x": .1, "y": .2, "w": .2, "h": .2}, "On the desk")
+    agent = Mock()
+    agent.analyze.side_effect = lambda image, photo, catalog, targets: Scene(photo, "hermes-agent", (observation,))
+    agent.recall.return_value = {"status": "available", "detection_id": "prior-id"}
+    prior = {"detection_id": "prior-id", "location_description": "Beside the mug"}
+    monkeypatch.setattr(processing.repo, "lookup_last_sighting", lambda *args: prior)
+    saved = Mock()
+    monkeypatch.setattr(processing.repo, "save_result", saved)
+    facts, annotated = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keyring"], agent, sessions)
+    assert facts["status"] == "not_visible" and facts["history_status"] == "available"
+    assert facts["last_sighting"] == prior
+    assert saved.call_args.kwargs["boxes"][0].label == "wallet"
+    assert saved.call_args.kwargs["boxes"][0].confidence is None
+    assert saved.call_args.kwargs["targets"] == ["keys"]
+    assert annotated.startswith(b"\xff\xd8\xff")
+
+
+def test_invented_history_not_trusted(monkeypatch):
+    sessions = lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")])
+    agent = Mock()
+    agent.analyze.side_effect = lambda image, photo, *args: Scene(photo, "hermes-agent", ())
+    agent.recall.return_value = {"status": "available", "detection_id": "invented"}
+    monkeypatch.setattr(processing.repo, "lookup_last_sighting", lambda *args: {"detection_id": "real"})
+    monkeypatch.setattr(processing.repo, "save_result", Mock())
+    facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent, sessions)
+    assert facts["history_status"] == "unavailable" and facts["last_sighting"] is None
+
+
+def test_database_failure_does_not_publish_success(monkeypatch):
+    s3 = FakeS3()
+    s3.objects["incoming/test.jpg"] = jpeg()
+    monkeypatch.setattr("server.process_photo", Mock(side_effect=RuntimeError("secret database details")))
+    worker = Worker(s3, "test", Mock(), Mock())
+    worker.process("incoming/test.jpg", TAKEN)
+    facts = json.loads(s3.objects["results/test_result.json"])
+    assert facts["status"] == "failed" and not facts["persisted"]
+    assert "secret" not in str(facts)
+    assert not worker.has_result("incoming/test.jpg")
+    assert "results/test_result.jpg" not in s3.objects
+
+
+def test_capture_time_and_completion_order(monkeypatch):
+    s3 = FakeS3()
+    s3.objects["incoming/test.jpg"] = jpeg()
+    s3.objects["incoming/test.json"] = json.dumps({"targets": ["keys"], "captured_at": TAKEN.isoformat()}).encode()
+    fn = Mock(return_value=({"version": 2, "status": "found", "persisted": True}, b"annotated"))
+    monkeypatch.setattr("server.process_photo", fn)
+    worker = Worker(s3, "test", Mock(), Mock())
+    worker.process("incoming/test.jpg", datetime.now(UTC))
+    assert fn.call_args.args[2] == TAKEN
+    assert s3.written == ["results/test_result.json", "results/test_result.jpg"]
+    assert worker.has_result("incoming/test.jpg")
+
+
+def test_analysis_failure_never_writes_observations(monkeypatch):
+    saved = Mock()
+    monkeypatch.setattr(processing.repo, "save_result", saved)
+    agent = Mock()
+    agent.analyze.side_effect = RuntimeError("provider failed")
+    with pytest.raises(RuntimeError):
+        processing.process_photo(jpeg(), "incoming/test.jpg", TAKEN, ["keys"], agent,
+                                  lambda: Session([SimpleNamespace(name="keys", aliases=[], id="keys-id")]))
+    saved.assert_not_called()
+
+
+def test_publication_retry_uses_persisted_scene(monkeypatch):
+    from types import SimpleNamespace
+    prior = SimpleNamespace(id="photo-id", taken_at=TAKEN, width=100, height=80, model_version="deployed-agent")
+    det = SimpleNamespace(item_id="keys-id", label="keys", confidence=None,
+                          bbox={"x":.1,"y":.2,"w":.2,"h":.2}, location_description="On the desk")
+    class ExistingSession(Session):
+        def scalar(self, query): return prior
+        def scalars(self, query):
+            is_items = query.column_descriptions[0]["entity"].__name__ == "Item"
+            return SimpleNamespace(all=lambda: self.items if is_items else [det])
+    items = [SimpleNamespace(id="keys-id", name="keys", aliases=[])]
+    agent = Mock()
+    monkeypatch.setattr(processing.repo, "save_result", Mock())
+    facts, _ = processing.process_photo(jpeg(), "incoming/test.jpg", datetime.now(UTC), ["keys"], agent,
+                                       lambda: ExistingSession(items))
+    agent.analyze.assert_not_called()
+    assert facts["captured_at"] == TAKEN.isoformat()
+    assert facts["matches"][0]["location_description"] == "On the desk"
+
+
+def test_worker_requires_database_before_connecting(monkeypatch):
+    monkeypatch.setattr("server.load_dotenv", lambda *a, **kw: None)
+    monkeypatch.setenv("HERMES_BASE_URL", "http://127.0.0.1:8642/v1")
+    monkeypatch.setenv("HERMES_API_KEY", "test")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    from server import main
+    with pytest.raises(SystemExit, match="DATABASE_URL"):
+        main()

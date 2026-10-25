@@ -28,8 +28,8 @@ describe("narration helpers", () => {
     });
   });
 
-  it("says a missing item was never seen when there is no earlier sighting", () => {
-    expect(factsFor({ status: "not_visible", target: "keys", matches: [], detections: [] })).toMatchObject({ never_seen_before: true });
+  it("does not claim never seen without a successful lookup", () => {
+    expect(factsFor({ status: "not_visible", target: "keys", matches: [], detections: [] })).toMatchObject({ history_status: "unavailable" });
   });
 
   it("finds items named in a sentence without Gemini", () => {

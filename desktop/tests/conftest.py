@@ -46,6 +46,13 @@ def engine() -> Iterator[Engine]:
         pytest.skip(f"Postgres not reachable at TEST_DATABASE_URL: {e}")
     cfg = Config(str(DESKTOP / "alembic.ini"))
     cfg.cmd_opts = type("Opts", (), {"x": [f"url={TEST_URL}"]})()
+    # This database is explicitly disposable. Clear nullable observations before
+    # exercising downgrade, which correctly protects unscored production rows.
+    cleanup = make_engine(TEST_URL)
+    with cleanup.begin() as connection:
+        if connection.scalar(text("select to_regclass('public.detections')")):
+            connection.execute(text(f"truncate {TABLES} cascade"))
+    cleanup.dispose()
     command.downgrade(cfg, "base")  # start from nothing, and exercise downgrade too
     command.upgrade(cfg, "head")
     eng = make_engine(TEST_URL)

@@ -10,8 +10,8 @@ export interface Store {
   createJob(audio: Uint8Array, contentType: string, source?: JobSource): Promise<JobView>;
   /** A typed question: the text is the transcript, so speech-to-text is skipped. */
   askText(text: string): Promise<JobView>;
-  /** The newest job from a source since a time, so the Ask page can pick up camera-button questions. */
-  latestJobId(source: JobSource, since: string): Promise<string | null>;
+  /** The next unpresented job in server timestamp/ID order, so camera questions are not skipped. */
+  latestJobId(source: JobSource, since: string, afterId?: string): Promise<string | null>;
   /** The spoken reply for a job, if this server still holds it. */
   replyAudio(id: string): Promise<Buffer | null>;
   /** Also narrates the job once the desktop has written its result. */

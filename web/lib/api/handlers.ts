@@ -73,14 +73,16 @@ export async function postDeviceJob(store: Store, request: Request, piToken: str
   return queued(() => store.createJob(recording.audio, recording.contentType, "device"));
 }
 
-/** The newest job from a source since a time, so the page can pick up camera-button questions. */
+/** The next unpresented job from a source, with a server timestamp/ID cursor. */
 export async function getLatestJob(store: Store, url: URL) {
   const source = url.searchParams.get("source");
   const since = url.searchParams.get("since") ?? "";
   if (source !== "device" && source !== "web") return error("source must be device or web", 400);
   if (Number.isNaN(Date.parse(since))) return error("since must be an ISO time", 400);
-  const id = await store.latestJobId(source, since);
-  return id ? json({ id }) : new Response(null, { status: 204 });
+  const id = await store.latestJobId(source, since, url.searchParams.get("afterId") ?? undefined);
+  if (!id) return new Response(null, { status: 204 });
+  const job = await store.getJob(id);
+  return job ? json({ id, createdAt: job.createdAt }) : new Response(null, { status: 204 });
 }
 
 /** The spoken reply, kept in memory only. */

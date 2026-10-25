@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { Pause, Play } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type { Box, JobView, Snapshot } from "@/lib/data/types";
-import { percent, placeWords } from "@/lib/format";
+import { exactTime, percent, placeWords } from "@/lib/format";
 import { prefersReducedMotion } from "@/lib/motion/use-anime";
 import { cn } from "@/lib/utils";
 import { CogTrain } from "./cog-train";
@@ -41,7 +42,7 @@ function Backdrop() {
   );
 }
 
-type StagePhoto = { snapshot: Snapshot; lens: { box: Box; confidence?: number } | null };
+type StagePhoto = { snapshot: Snapshot; lens: { box: Box; confidence?: number | null } | null };
 
 /** The photo behind the narrator: the item circled where it was found, else the camera's photo for this question, else the last photo of the item. */
 function photoOf(answer: JobView | null): StagePhoto | null {
@@ -49,8 +50,8 @@ function photoOf(answer: JobView | null): StagePhoto | null {
   if (answer.found && answer.match) {
     return { snapshot: answer.match.snapshot, lens: { box: answer.match.box, confidence: answer.match.confidence } };
   }
+  if (answer.lastSighting && !answer.found) return { snapshot: answer.lastSighting.snapshot, lens: { box: answer.lastSighting.box } };
   if (answer.photo) return { snapshot: answer.photo, lens: null };
-  if (answer.lastSighting) return { snapshot: answer.lastSighting.snapshot, lens: { box: answer.lastSighting.box } };
   return null;
 }
 
@@ -105,7 +106,7 @@ function useReveal(answer: JobView | null, audioRef: RefObject<HTMLAudioElement 
   }
   // Finished: the voice ended, or (with no voice) the last word has been typed. While the
   // voice is still being made, he is not finished: it may yet arrive and be played.
-  const done = !answer?.replyPending && (timed ? ended : total > 0 && (reduced || typed >= total));
+  const done = !answer?.replyPending && (answer?.replyAudioUrl ? ended : total > 0 && (reduced || typed >= total));
   return { words, shown, current, done, onEnded: () => setEnded(true) };
 }
 
@@ -114,6 +115,7 @@ export function Stage({
   answer,
   working,
   aside,
+  onSettled,
 }: {
   /** What the narrator says when there is no answer to read. */
   line: ReactNode;
@@ -121,10 +123,14 @@ export function Stage({
   working: boolean;
   /** A note under the dialogue, e.g. the camera is offline. */
   aside?: ReactNode;
+  onSettled?: () => void;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [blocked, setBlocked] = useState(false);
+  const [blocked, setBlocked] = useState(() => {
+    try { return Boolean(answer?.id && sessionStorage.getItem(`ctrlf-played:${answer.id}`)); }
+    catch { return false; }
+  });
   // The answer plays out in three steps: the narrator talks in his study; when he is done the
   // study fades away to reveal the camera's photo behind him; then he and his box fade out,
   // leaving the photo. The ▼ skips ahead, and "Narrator" brings him back over the photo.
@@ -132,6 +138,7 @@ export function Stage({
   const photo = photoOf(answer);
   const name = answer?.target ?? "item";
   const { words, shown, current, done, onEnded } = useReveal(answer, audioRef, playing, blocked);
+  useEffect(() => { if (done && !blocked) onSettled?.(); }, [done, blocked, onSettled]);
   const autoPlayed = useRef(false);
   const hasVoice = Boolean(answer?.replyAudioUrl);
   const hasPhoto = Boolean(photo);
@@ -150,12 +157,19 @@ export function Stage({
 
   // Play the reply once, as soon as its audio is there (with the text, or a moment after it).
   const audioUrl = answer?.replyAudioUrl;
+  const answerId = answer?.id;
   useEffect(() => {
     const audio = audioRef.current;
     if (!(audioUrl && audio)) return;
+    const key = `ctrlf-played:${answerId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* private storage does not prevent explicit playback */ }
     audio.currentTime = 0;
     audio.play().catch(() => setBlocked(true));
-  }, [audioUrl]);
+    return () => audio.pause();
+  }, [audioUrl, answerId]);
 
   const toggle = () => {
     const audio = audioRef.current;
@@ -175,7 +189,8 @@ export function Stage({
     caption = (
       <span data-testid="found-caption">
         <span className="font-semibold first-letter:uppercase">{name}</span>
-        {place ? ` · on ${place}` : ""} · <span className="figures">{percent(answer.match.confidence)} sure</span>
+        {answer.match.locationDescription ? ` · ${answer.match.locationDescription}` : place ? ` · on ${place}` : ""}
+        {answer.match.confidence != null && <> · <span className="figures">{percent(answer.match.confidence)} sure</span></>}
       </span>
     );
   } else if (answer?.found) {
@@ -185,6 +200,17 @@ export function Stage({
         <span className="font-semibold first-letter:uppercase">{name}</span> · in the photo, by your word
       </span>
     );
+  }
+
+  if (!answer?.found && answer?.lastSighting) {
+    const prior = answer.lastSighting;
+    caption = <span data-testid="last-seen-caption">Not in view now. Last seen {exactTime(prior.seenAt)}
+      {prior.locationDescription ? ` · ${prior.locationDescription}` : prior.zone ? ` · ${prior.zone}` : ""}.
+      {answer.itemId && <> <Link className="underline" href={`/items/${answer.itemId}`}>View history</Link></>}
+    </span>;
+  } else if (answer?.found === false) {
+    caption = <span data-testid="memory-status">{answer.historyStatus === "never_seen"
+      ? "The camera has not seen this item before." : "Not in view now. History cannot currently be checked."}</span>;
   }
 
   return (
@@ -302,7 +328,7 @@ export function Stage({
                 aria-label="Show the camera's photo"
                 className="group flex size-9 items-center justify-center text-brass outline-none focus-visible:ring-2 focus-visible:ring-brass"
                 data-testid="next"
-                onClick={() => setView("photo")}
+                onClick={() => { setView("photo"); onSettled?.(); }}
                 type="button"
               >
                 <span className="motion-safe:animate-[vn-nudge_1.1s_ease-in-out_infinite] group-hover:[animation-play-state:paused]">
@@ -324,6 +350,7 @@ export function Stage({
                 setPlaying(false);
                 onEnded();
               }}
+              onError={() => setBlocked(true)}
               onPause={() => setPlaying(false)}
               onPlay={() => setPlaying(true)}
               preload="auto"

@@ -92,13 +92,13 @@ export function HistoryView({
             </div>
             <div>
               <dt className="text-ink-muted text-sm">Where</dt>
-              <dd className="capitalize">{selected.zone ?? "Place not marked"}</dd>
+              <dd className="capitalize">{selected.locationDescription || selected.zone || "Place not marked"}</dd>
             </div>
             <div>
               <dt className="text-ink-muted text-sm">Confidence</dt>
               <dd className="flex items-center gap-2">
-                <Gauge label={`Confidence ${percent(selected.confidence)}`} value={selected.confidence} />
-                <span className="figures">{percent(selected.confidence)}</span>
+                {selected.confidence != null && <Gauge label={`Confidence ${percent(selected.confidence ?? 0)}`} value={selected.confidence} />}
+                {selected.confidence != null ? <span className="figures">{percent(selected.confidence)}</span> : <span>Not supplied</span>}
               </dd>
             </div>
           </dl>

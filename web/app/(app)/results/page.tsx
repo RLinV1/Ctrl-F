@@ -83,7 +83,7 @@ async function ResultList() {
                 <p className="mt-1 font-semibold text-[17px]">
                   {outcome(job)}
                   {job.target && <span className="first-letter:uppercase">: {job.target}</span>}
-                  {job.match && <span className="figures font-normal text-ink-muted text-sm"> · {percent(job.match.confidence)} sure</span>}
+                  {job.match?.confidence != null && <span className="figures font-normal text-ink-muted text-sm"> · {percent(job.match.confidence)} sure</span>}
                 </p>
                 {job.transcript && <p className="mt-1 text-ink-muted text-sm">Asked: “{job.transcript}”</p>}
                 {job.replyText && <p className="mt-2">{job.replyText}</p>}

@@ -1,3 +1,7 @@
+> Historical/optional workflow: the active search worker now uses Hermes image
+> analysis and does not load these weights. Keep these utilities for experiments;
+> no dataset or trained YOLO model is required to deploy Ctrl-F's Hermes pipeline.
+
 # YOLO Training Plan
 
 Ctrl-F uses a custom-trained YOLO model. Stock COCO weights cannot detect keys, wallets, or earbuds, so we fine-tune a pretrained Ultralytics YOLO model on our own images.

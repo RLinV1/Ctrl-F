@@ -1,3 +1,9 @@
+> Reconciliation: `replace-yolo-with-hermes` supersedes this change's active
+> search-path assumptions about YOLO, browser-only audio, optional sighting memory,
+> and device discovery. Keep completed unrelated work and training utilities.
+> Do not archive the superseded search contracts independently; use the current
+> contracts and reconciliation map in `replace-yolo-with-hermes/design.md`.
+
 ## Why
 
 The desktop (`desktop/server.py`) runs YOLO on each Pi photo but keeps the result only as JSON in S3 (`results/<id>_result.json`). Nothing goes into Postgres, so Ctrl-F can't answer "where did I last see it?" from lasting history, can't count how often an item gets lost, and has no table for the web app to read later.

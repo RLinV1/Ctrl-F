@@ -1,3 +1,9 @@
+> Reconciliation: `replace-yolo-with-hermes` supersedes this change's active
+> search-path assumptions about YOLO, browser-only audio, optional sighting memory,
+> and device discovery. Keep completed unrelated work and training utilities.
+> Do not archive the superseded search contracts independently; use the current
+> contracts and reconciliation map in `replace-yolo-with-hermes/design.md`.
+
 # Proposal
 
 ## Why

@@ -7,7 +7,7 @@ Ctrl+F for the physical world. Ask out loud "where are my keys?" and Ctrl-F look
 1. User speaks a request ("find my wallet").
 2. Audio is transcribed (ElevenLabs STT). The transcript goes to the vision model, which identifies the target item.
 3. The Raspberry Pi captures a photo and sends it to the desktop.
-4. The desktop runs YOLO on the photo and matches detections to the target.
+4. The processing worker uses Hermes to find all tracked objects in the photo and query their prior Postgres sightings.
 5. The result is stored (snapshot + sighting row) and spoken back (Gemini writes the reply as a witty steampunk narrator, ElevenLabs TTS voices it).
 6. History is kept, so Ctrl-F can answer "where did I last see it?" and "how often do I lose this?".
 
@@ -23,9 +23,9 @@ Theme: steampunk. The UI looks like brass and gears, and the narrator talks like
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Chosen tools and the reason for each. |
 | [training/README.md](training/README.md) | Train custom YOLO weights from your labeled dataset. |
 
-## Run locally
+## Run on your service hosts
 
-Everything runs locally first, with Docker Compose for the data services.
+Follow [desktop/README.md](desktop/README.md), [pi/README.md](pi/README.md) and [web/README.md](web/README.md) on their deployment hosts. The coding workstation is not a deployment target. Docker Compose can supply a local Postgres when desired.
 
 ```bash
 cp .env.example .env
@@ -40,7 +40,7 @@ This repo uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Behavior spec
 
 ## Status
 
-Pre-code. Repo holds documentation only. See the roadmap in [docs/PRD.md](docs/PRD.md).
+Hermes transition implemented with mocked tests; deployment-host database and hardware acceptance remain. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Planned repo layout
 
